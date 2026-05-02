@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resumo semanal</title>
+  <style>
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f4f4f5;
+      margin: 0;
+      padding: 24px 0;
+      color: #18181b;
+    }}
+    .container {{
+      max-width: 560px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }}
+    .header {{
+      background: #18181b;
+      padding: 28px 32px;
+    }}
+    .header h1 {{
+      margin: 0;
+      color: #ffffff;
+      font-size: 20px;
+      font-weight: 600;
+    }}
+    .header p {{
+      margin: 4px 0 0;
+      color: #a1a1aa;
+      font-size: 14px;
+    }}
+    .body {{
+      padding: 28px 32px;
+    }}
+    .body p {{
+      margin: 0 0 20px;
+      font-size: 15px;
+      line-height: 1.6;
+      color: #3f3f46;
+    }}
+    .stats {{
+      display: flex;
+      gap: 16px;
+      margin: 0 0 24px;
+    }}
+    .stat-card {{
+      flex: 1;
+      background: #f4f4f5;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }}
+    .stat-number {{
+      font-size: 32px;
+      font-weight: 700;
+      color: #18181b;
+      line-height: 1;
+    }}
+    .stat-label {{
+      font-size: 12px;
+      color: #71717a;
+      margin-top: 4px;
+    }}
+    .notice {{
+      background: #fef9c3;
+      border: 1px solid #fde047;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #713f12;
+      margin-top: 16px;
+    }}
+    .footer {{
+      padding: 20px 32px;
+      background: #fafafa;
+      border-top: 1px solid #f4f4f5;
+      font-size: 12px;
+      color: #a1a1aa;
+      text-align: center;
+    }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Resumo da semana</h1>
+      <p>{week_start} — {week_end}</p>
+    </div>
+    <div class="body">
+      <p>Oi, <strong>{user_email}</strong>! Veja o que aconteceu com o seu conteúdo esta semana:</p>
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-number">{campaigns_count}</div>
+          <div class="stat-label">Campanhas geradas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">{posts_count}</div>
+          <div class="stat-label">Posts criados</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">{published_count}</div>
+          <div class="stat-label">Posts publicados</div>
+        </div>
+      </div>
+      {metrics_note}
+    </div>
+    <div class="footer">
+      Resumo enviado toda sexta-feira às 14h no seu horário local.<br />
+      Agência de Marketing IA
+    </div>
+  </div>
+</body>
+</html>
