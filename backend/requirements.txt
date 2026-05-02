@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pydantic[email]
+pydantic-settings
+google-generativeai
+pytest
+httpx
+alembic
+loguru
+bcrypt
+python-jose[cryptography]
+resend
+apscheduler>=3.10
+pytz
