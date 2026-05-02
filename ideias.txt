@@ -1,0 +1,16 @@
+CONFIGURAR TWITTER
+IMPLEMENTAR DASHBOARD
+CONFIGURAR STRIPE
+CONFIGURAR GITHUB ACTIONS
+CONFIGURAR DEPLOY VERCEL
+RODAR TESTE DE SEGURANÇA
+
+free: 
+tem 3 posts no mês em cada rede
+tem 2 tipos de agentes
+tem somente 1 insight DASH
+
+pro R$29,90:
+ter 30 posts no mês para cada rede
++ tipo de agente e personaliza seu agente
+insights de engajamento + como melhorar post/perfil
