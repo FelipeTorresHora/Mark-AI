@@ -27,6 +27,13 @@ class _DummyClient:
         return _DummyResponse()
 
 
+def test_linkedin_authorization_url_uses_default_publish_scopes():
+    url = oauth_linkedin.get_authorization_url("state-token")
+
+    assert "openid+profile+w_member_social" in url
+    assert "r_member_postAnalytics" not in url
+
+
 def test_linkedin_publish_post_uses_rest_posts_endpoint(monkeypatch):
     client = _DummyClient()
     monkeypatch.setattr("src.services.oauth_linkedin.httpx.Client", lambda: client)

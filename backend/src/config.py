@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     linkedin_client_secret: str = ""
     linkedin_redirect_uri: str = "http://localhost:8000/api/v1/social/callback/linkedin"
     linkedin_api_version: str = "202504"
+    linkedin_scopes: str = "openid profile w_member_social"
 
     # Resend email
     resend_api_key: str = ""

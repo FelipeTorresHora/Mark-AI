@@ -9,7 +9,6 @@ _AUTH_URL = "https://www.linkedin.com/oauth/v2/authorization"
 _TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 _USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
 _POSTS_URL = "https://api.linkedin.com/rest/posts"
-_SCOPES = "openid profile w_member_social r_member_postAnalytics"
 
 
 def get_authorization_url(state: str) -> str:
@@ -17,7 +16,7 @@ def get_authorization_url(state: str) -> str:
         "response_type": "code",
         "client_id": settings.linkedin_client_id,
         "redirect_uri": settings.linkedin_redirect_uri,
-        "scope": _SCOPES,
+        "scope": settings.linkedin_scopes,
         "state": state,
     }
     return f"{_AUTH_URL}?{urllib.parse.urlencode(params)}"
