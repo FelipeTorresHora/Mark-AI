@@ -23,6 +23,12 @@ export function isNotFoundError(err: unknown): boolean {
     return (err as { response?: { status?: number } })?.response?.status === 404;
 }
 
+export function isLocalDateTimeInPast(localDateTime: string, nowMs: number): boolean {
+    if (!localDateTime) return false;
+    const scheduledMs = new Date(localDateTime).getTime();
+    return !Number.isNaN(scheduledMs) && scheduledMs <= nowMs;
+}
+
 export function formatScheduledAt(iso: string): string {
     const date = new Date(iso);
     const now = new Date();

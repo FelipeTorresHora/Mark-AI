@@ -61,7 +61,6 @@ export function useSSE(endpoint: string | null): SSEState {
     const esRef = useRef<EventSource | null>(null);
 
     useEffect(() => {
-        setState(createInitialState());
         if (!endpoint) return;
 
         const es = new EventSource(endpoint);
@@ -123,6 +122,7 @@ export function useSSE(endpoint: string | null): SSEState {
         return () => {
             es.close();
             esRef.current = null;
+            setState(createInitialState());
         };
     }, [endpoint]);
 

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X, Zap, Eye } from 'lucide-react';
@@ -18,18 +18,17 @@ function fillTemplate(body: string, values: Record<string, string>): string {
     return body.replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? `{{${key}}}`);
 }
 
-export function TemplateCustomizeModal({ template, onClose }: Props) {
-    const navigate = useNavigate();
-    const [values, setValues] = useState<Record<string, string>>({});
+function emptyPlaceholderValues(template: PostTemplate): Record<string, string> {
+    const initial: Record<string, string> = {};
+    template.placeholders.forEach((p) => {
+        initial[p] = '';
+    });
+    return initial;
+}
 
-    // Reset values when template changes
-    useEffect(() => {
-        if (template) {
-            const initial: Record<string, string> = {};
-            template.placeholders.forEach((p) => { initial[p] = ''; });
-            setValues(initial);
-        }
-    }, [template]);
+function TemplateCustomizeModalBody({ template, onClose }: { template: PostTemplate; onClose: () => void }) {
+    const navigate = useNavigate();
+    const [values, setValues] = useState(() => emptyPlaceholderValues(template));
 
     const filledBody = useMemo(
         () => (template ? fillTemplate(template.bodyTemplate, values) : ''),
@@ -48,9 +47,7 @@ export function TemplateCustomizeModal({ template, onClose }: Props) {
     }
 
     return (
-        <AnimatePresence>
-            {template && (
-                <>
+        <>
                     {/* Backdrop */}
                     <motion.div
                         key="backdrop"
@@ -167,7 +164,15 @@ export function TemplateCustomizeModal({ template, onClose }: Props) {
                             </button>
                         </div>
                     </motion.div>
-                </>
+        </>
+    );
+}
+
+export function TemplateCustomizeModal({ template, onClose }: Props) {
+    return (
+        <AnimatePresence>
+            {template && (
+                <TemplateCustomizeModalBody key={template.id} template={template} onClose={onClose} />
             )}
         </AnimatePresence>
     );
