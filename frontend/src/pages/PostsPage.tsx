@@ -14,6 +14,12 @@ import type { PostStatus, Platform } from '../types';
 type StatusFilter = 'ALL' | PostStatus;
 type EditMode = 'edit' | 'schedule';
 
+function datetimeLocalNow(): string {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const STATUS_LABELS: Record<StatusFilter, string> = {
     ALL: 'Todos',
     DRAFT: 'Rascunho',
@@ -215,6 +221,7 @@ function PostRowCard({ post, onEdit, onApprove, onReject, onCancel, isApproving,
 function XComposer() {
     const [content, setContent] = useState('');
     const [scheduledAt, setScheduledAt] = useState('');
+    const [minScheduleLocal] = useState(datetimeLocalNow);
     const { data: xStatus } = useXIntegrationStatus();
     const publishNow = usePublishXPost();
     const schedulePost = useScheduleXPost();
@@ -222,7 +229,7 @@ function XComposer() {
     const trimmed = content.trim();
     const isOverLimit = content.length > 280;
     const hasSchedule = scheduledAt.length > 0;
-    const scheduleIsPast = hasSchedule && new Date(scheduledAt).getTime() <= Date.now();
+    const scheduleIsPast = hasSchedule && scheduledAt < minScheduleLocal;
     const disabled = !trimmed || isOverLimit || !xStatus?.connected || publishNow.isPending || schedulePost.isPending;
 
     async function submitNow() {
@@ -273,6 +280,7 @@ function XComposer() {
                     <input
                         type="datetime-local"
                         value={scheduledAt}
+                        min={minScheduleLocal}
                         onChange={(event) => setScheduledAt(event.target.value)}
                         className="app-input text-sm px-3 py-1.5"
                     />

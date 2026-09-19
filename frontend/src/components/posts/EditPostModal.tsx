@@ -30,6 +30,7 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
 
     async function handleSave() {
         if (!post) return;
+        if (scheduleEnabled && scheduledAt && scheduledAt < minScheduleLocal) return;
         await editPost({
             id: post.id,
             content,
@@ -40,10 +41,12 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
         onClose();
     }
 
+    const [minScheduleLocal] = useState(() => toDatetimeLocal(new Date().toISOString()));
     const charCount = content.length;
     const isX = post?.platform === 'X';
     const isOverLimit = isX && charCount > 280;
-    const scheduleIsPast = scheduleEnabled && scheduledAt && new Date(scheduledAt).getTime() <= Date.now();
+    const scheduleIsPast =
+        scheduleEnabled && !!scheduledAt && scheduledAt < minScheduleLocal;
     const canCancelSchedule = isX && !!post?.scheduled_at && ['pending', 'failed'].includes(post.publish_status ?? 'pending');
 
     return (

@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useCampaigns, useDeleteCampaign } from '../hooks/useCampaigns';
@@ -62,12 +62,13 @@ export function DashboardPage() {
         retry: (failureCount, err) => !isNotFoundError(err) && failureCount < 2,
     });
 
-    useEffect(() => {
-        const nextState = location.state as { topic?: string } | null;
-        if (!nextState?.topic) return;
-        setTopic(nextState.topic);
+    const locationTopic = (location.state as { topic?: string } | null)?.topic ?? '';
+    const [seenNavTopic, setSeenNavTopic] = useState(locationTopic);
+    if (locationTopic && locationTopic !== seenNavTopic) {
+        setSeenNavTopic(locationTopic);
+        setTopic(locationTopic);
         setIsComposerOpen(true);
-    }, [location.state]);
+    }
 
     const generateMutation = useMutation({
         mutationFn: async () => {

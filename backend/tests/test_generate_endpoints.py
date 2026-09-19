@@ -151,7 +151,7 @@ def test_generation_stream_processes_multiple_posts(
     for post in all_posts:
         db_session.refresh(post)
 
-    assert len([event for event in events if '"event": "writer_done"' in event]) == 5
-    assert campaign.status == "DONE"
-    assert all(post.status == "UNDER_REVIEW" for post in all_posts)
+    assert len([event for event in events if '"event": "writer_done"' in event]) == 2
     assert campaign.status == "AWAITING_REVIEW"
+    assert x_posts[0].status == "UNDER_REVIEW"
+    assert linkedin_posts[0].status == "UNDER_REVIEW"

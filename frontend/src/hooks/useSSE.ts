@@ -57,11 +57,26 @@ function getPlatformStatus(progress: PlatformProgress): PlatformStatus {
 }
 
 export function useSSE(endpoint: string | null): SSEState {
-    const [state, setState] = useState<SSEState>(() => createInitialState());
+    const [snapshot, setSnapshot] = useState(() => ({
+        endpoint,
+        state: createInitialState(),
+    }));
+
+    if (endpoint !== snapshot.endpoint) {
+        setSnapshot({ endpoint, state: createInitialState() });
+    }
+
+    const state = snapshot.state;
+    const setState = (updater: SSEState | ((prev: SSEState) => SSEState)) => {
+        setSnapshot((prev) => ({
+            ...prev,
+            state: typeof updater === 'function' ? updater(prev.state) : updater,
+        }));
+    };
+
     const esRef = useRef<EventSource | null>(null);
 
     useEffect(() => {
-        setState(createInitialState());
         if (!endpoint) return;
 
         const es = new EventSource(endpoint);

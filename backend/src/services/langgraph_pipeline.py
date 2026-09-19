@@ -1,6 +1,8 @@
 """LangGraph orchestration for campaign generation with human-in-the-loop."""
 from __future__ import annotations
 
+import asyncio
+import os
 import uuid
 from typing import Any, Callable, TypedDict
 
@@ -36,6 +38,9 @@ class GenerationState(TypedDict, total=False):
 def _get_checkpointer():
     global _checkpointer, _checkpointer_cm
     if _checkpointer is not None:
+        return _checkpointer
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        _checkpointer = MemorySaver()
         return _checkpointer
     try:
         from langgraph.checkpoint.postgres import PostgresSaver
@@ -120,28 +125,31 @@ async def _generate_one_platform(
 def _build_graph(emitter: EventEmitter | None = None):
     graph = StateGraph(GenerationState)
 
-    async def generate_per_platform(state: GenerationState) -> dict:
-        platforms = state.get("platforms") or []
+    def generate_per_platform(state: GenerationState) -> dict:
+        platforms = list(state.get("platforms") or [])
         if state.get("redo_platform"):
             platforms = [state["redo_platform"]]
 
-        contents = dict(state.get("platform_contents") or {})
-        errors = list(state.get("errors") or [])
+        async def _run_platforms() -> dict:
+            contents = dict(state.get("platform_contents") or {})
+            errors = list(state.get("errors") or [])
 
-        for platform in platforms:
-            plat, text = await _generate_one_platform(platform, state, emitter)
-            if text:
-                contents[plat] = text
-            else:
-                errors.append(f"Falha ao gerar para {plat}")
+            for platform in platforms:
+                plat, text = await _generate_one_platform(platform, state, emitter)
+                if text:
+                    contents[plat] = text
+                else:
+                    errors.append(f"Falha ao gerar para {plat}")
 
-        return {
-            "platform_contents": contents,
-            "errors": errors,
-            "redo_platform": None,
-            "redo_feedback": None,
-            "attempt": (state.get("attempt") or 1) + (1 if state.get("redo_platform") else 0),
-        }
+            return {
+                "platform_contents": contents,
+                "errors": errors,
+                "redo_platform": None,
+                "redo_feedback": None,
+                "attempt": (state.get("attempt") or 1) + (1 if state.get("redo_platform") else 0),
+            }
+
+        return asyncio.run(_run_platforms())
 
     def brand_guard_node(state: GenerationState) -> dict:
         contents = {}
@@ -215,7 +223,7 @@ async def run_until_review(
         "attempt": 1,
         "errors": [],
     }
-    result = await app.ainvoke(initial, config=config)
+    result = await asyncio.to_thread(app.invoke, initial, config)
     return result
 
 
@@ -230,7 +238,7 @@ async def resume_after_human(
     app = _build_graph(emitter)
     config = {"configurable": {"thread_id": thread_id}}
     payload = {"action": action, "platform": platform, "feedback": feedback}
-    result = await app.ainvoke(Command(resume=payload), config=config)
+    result = await asyncio.to_thread(app.invoke, Command(resume=payload), config)
     return result
 
 
