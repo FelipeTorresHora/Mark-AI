@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useSSE } from '../useSSE';
+import axios from 'axios';
+import { api } from '../../lib/api';
+import { useSSE, sseStreamKey } from '../useSSE';
+
+describe('sseStreamKey', () => {
+    it('ignores token query param', () => {
+        expect(
+            sseStreamKey('http://test/api/v1/generate/abc/stream?token=old'),
+        ).toBe('http://test/api/v1/generate/abc/stream');
+    });
+});
 
 describe('useSSE', () => {
     const MockEventSource = vi.fn(function EventSourceMock(url: string) {
@@ -12,6 +22,7 @@ describe('useSSE', () => {
     });
 
     afterEach(() => {
+        vi.useRealTimers();
         vi.restoreAllMocks();
     });
 
@@ -21,6 +32,7 @@ describe('useSSE', () => {
         let errorHandler: (() => void) | null = null;
         return {
             close: vi.fn(),
+            readyState: 1,
             set onmessage(h: (e: MessageEvent) => void) { handler = h; },
             set onerror(h: () => void) { errorHandler = h; },
             set onopen(h: (e: Event) => void) { openHandler = h; },
@@ -30,7 +42,8 @@ describe('useSSE', () => {
             _triggerOpen() {
                 openHandler?.({} as Event);
             },
-            _triggerError() {
+            _triggerError(readyState = 2) {
+                Object.defineProperty(this, 'readyState', { value: readyState, configurable: true });
                 errorHandler?.();
             },
             url,
@@ -103,20 +116,51 @@ describe('useSSE', () => {
         });
 
         expect(result.current.isComplete).toBe(true);
+        expect(result.current.error).toBeNull();
         expect(mockEs.close).toHaveBeenCalled();
     });
 
-    it('handles connection error', async () => {
+    it('does not show lost connection after successful complete', async () => {
         const { result } = renderHook(() => useSSE('http://test/stream?token=abc'));
         const mockEs = MockEventSource.mock.results[0]?.value;
 
         act(() => {
+            mockEs._triggerMessage({
+                event: 'generation_complete',
+                platform: null,
+                data: { campaign_id: 'camp-1' },
+            });
             mockEs._triggerError();
         });
 
-        expect(result.current.isConnected).toBe(false);
-        expect(result.current.error).toBe('Conexão SSE perdida');
-        expect(mockEs.close).toHaveBeenCalled();
+        expect(result.current.isComplete).toBe(true);
+        expect(result.current.error).toBeNull();
+    });
+
+    it('debounces connection error until recovery is exhausted', async () => {
+        vi.useFakeTimers();
+        vi.spyOn(axios, 'post').mockRejectedValue(new Error('refresh failed'));
+        vi.spyOn(api, 'get').mockRejectedValue(new Error('poll failed'));
+
+        const { result } = renderHook(() =>
+            useSSE('http://test/api/v1/generate/camp-1/stream?token=abc'),
+        );
+        const mockEs = MockEventSource.mock.results[0]?.value;
+
+        await act(async () => {
+            mockEs._triggerError(2);
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(result.current.error).toBeNull();
+
+        await act(async () => {
+            vi.advanceTimersByTime(4000);
+        });
+
+        expect(result.current.error).toContain('Conexão SSE perdida');
     });
 
     it('returns initial state when no endpoint', () => {

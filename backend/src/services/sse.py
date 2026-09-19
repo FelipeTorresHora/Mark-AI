@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 from typing import AsyncGenerator
 
@@ -8,6 +9,9 @@ from src.models.campaign import Campaign
 from src.models.post import Post
 from src.services.langgraph_pipeline import new_thread_id, run_until_review
 
+KEEPALIVE_INTERVAL_SECONDS = 12
+TERMINAL_CAMPAIGN_STATUSES = frozenset({"AWAITING_REVIEW", "DONE", "FAILED"})
+
 
 async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str, None]:
     """SSE generator: LangGraph até interrupt de revisão humana."""
@@ -16,9 +20,26 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
         payload = json.dumps({"event": event, "platform": platform, "data": data})
         return f"data: {payload}\n\n"
 
+    def keepalive_comment() -> str:
+        return ": keepalive\n\n"
+
+    yield keepalive_comment()
+
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
         yield make_event("error", None, {"message": "Campanha não encontrada"})
+        return
+
+    if campaign.status in TERMINAL_CAMPAIGN_STATUSES:
+        yield make_event(
+            "generation_complete",
+            None,
+            {
+                "campaign_id": campaign_id,
+                "awaiting_review": campaign.status == "AWAITING_REVIEW",
+                "resumed": True,
+            },
+        )
         return
 
     campaign.status = "GENERATING"
@@ -42,9 +63,11 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
     platform_post_ids = {p: str(posts_by_platform[p].id) for p in platforms}
 
     events_queue: asyncio.Queue[tuple[str, str | None, dict]] = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+    graph_finished = asyncio.Event()
 
     def emitter(event: str, platform: str | None, data: dict) -> None:
-        events_queue.put_nowait((event, platform, data))
+        loop.call_soon_threadsafe(events_queue.put_nowait, (event, platform, data))
 
     audience = campaign.audience
 
@@ -67,18 +90,38 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
             )
         except Exception as exc:
             graph_error = str(exc)
-            events_queue.put_nowait(("error", None, {"message": graph_error}))
+            loop.call_soon_threadsafe(
+                events_queue.put_nowait,
+                ("error", None, {"message": graph_error}),
+            )
         finally:
-            events_queue.put_nowait(("__done__", None, {}))
+            loop.call_soon_threadsafe(events_queue.put_nowait, ("__done__", None, {}))
+            graph_finished.set()
+
+    async def keepalive_loop():
+        while not graph_finished.is_set():
+            try:
+                await asyncio.wait_for(graph_finished.wait(), timeout=KEEPALIVE_INTERVAL_SECONDS)
+            except TimeoutError:
+                await events_queue.put(("__ping__", None, {}))
 
     task = asyncio.create_task(run_graph())
+    keepalive_task = asyncio.create_task(keepalive_loop())
 
-    while True:
-        event, platform, data = await events_queue.get()
-        if event == "__done__":
-            break
-        yield make_event(event, platform, data)
-        await asyncio.sleep(0)
+    try:
+        while True:
+            event, platform, data = await events_queue.get()
+            if event == "__done__":
+                break
+            if event == "__ping__":
+                yield keepalive_comment()
+                continue
+            yield make_event(event, platform, data)
+            await asyncio.sleep(0)
+    finally:
+        keepalive_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await keepalive_task
 
     await task
 

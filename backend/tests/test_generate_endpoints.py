@@ -155,3 +155,32 @@ def test_generation_stream_processes_multiple_posts(
     assert campaign.status == "AWAITING_REVIEW"
     assert x_posts[0].status == "UNDER_REVIEW"
     assert linkedin_posts[0].status == "UNDER_REVIEW"
+
+
+def test_generation_stream_resumes_terminal_campaign_without_rerunning_graph(
+    db_session,
+    user_factory,
+    campaign_factory,
+    monkeypatch,
+):
+    user = user_factory()
+    campaign = campaign_factory(user)
+    campaign.status = "AWAITING_REVIEW"
+    db_session.commit()
+
+    ran = {"value": False}
+
+    async def should_not_run(**kwargs):
+        ran["value"] = True
+        return {}
+
+    monkeypatch.setattr("src.services.sse.run_until_review", should_not_run)
+
+    async def collect_events():
+        return [event async for event in generation_stream(str(campaign.id), db_session)]
+
+    events = asyncio.run(collect_events())
+
+    assert not ran["value"]
+    assert any('"generation_complete"' in event for event in events)
+    assert any('"resumed": true' in event for event in events)
