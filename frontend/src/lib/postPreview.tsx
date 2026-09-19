@@ -37,14 +37,3 @@ export function PostPreview({ platform, content, editable, onContentChange }: Po
         />
     );
 }
-
-export function platformLabel(platform: Platform): string {
-    switch (platform) {
-        case 'X':
-            return 'Twitter / X';
-        case 'INSTAGRAM':
-            return 'Instagram';
-        default:
-            return 'LinkedIn';
-    }
-}

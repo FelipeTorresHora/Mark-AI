@@ -4,7 +4,9 @@ import { X, Calendar, Clock } from 'lucide-react';
 import { type Post } from '../../types';
 import { useEditPost } from '../../hooks/useEditPost';
 import { useCancelXPost } from '../../hooks/useXPosts';
-import { PostPreview, platformLabel } from '../../lib/postPreview';
+import { PostPreview } from '../../lib/postPreview';
+import { platformLabel } from '../../lib/platformLabel';
+import { isDatetimeLocalPast } from '../../lib/datetimeLocal';
 import { Button } from '../common/Button';
 import { cn } from '../../lib/utils';
 
@@ -45,7 +47,7 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
     const isOverLimit =
         (isX && charCount > 280) ||
         (isInstagram && charCount > 2200);
-    const scheduleIsPast = scheduleEnabled && scheduledAt && new Date(scheduledAt).getTime() <= Date.now();
+    const scheduleIsPast = scheduleEnabled && isDatetimeLocalPast(scheduledAt);
     const canCancelSchedule = isX && !!post?.scheduled_at && ['pending', 'failed'].includes(post.publish_status ?? 'pending');
 
     return (

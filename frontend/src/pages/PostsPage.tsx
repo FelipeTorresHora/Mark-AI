@@ -8,6 +8,7 @@ import { EditPostModal } from '../components/posts/EditPostModal';
 import { Pagination } from '../components/common/Pagination';
 import { Button } from '../components/common/Button';
 import { cn, formatScheduledAt } from '../lib/utils';
+import { isDatetimeLocalPast } from '../lib/datetimeLocal';
 import { CheckCircle, XCircle, Pencil, Calendar, Twitter, Linkedin, Camera, FileText, X as XIcon, MoreHorizontal, Send, Clock } from 'lucide-react';
 import type { PostStatus, Platform } from '../types';
 
@@ -222,7 +223,7 @@ function XComposer() {
     const trimmed = content.trim();
     const isOverLimit = content.length > 280;
     const hasSchedule = scheduledAt.length > 0;
-    const scheduleIsPast = hasSchedule && new Date(scheduledAt).getTime() <= Date.now();
+    const scheduleIsPast = hasSchedule && isDatetimeLocalPast(scheduledAt);
     const disabled = !trimmed || isOverLimit || !xStatus?.connected || publishNow.isPending || schedulePost.isPending;
 
     async function submitNow() {

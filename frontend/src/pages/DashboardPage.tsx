@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useCampaigns, useDeleteCampaign } from '../hooks/useCampaigns';
@@ -46,7 +46,15 @@ export function DashboardPage() {
     const [isComposerOpen, setIsComposerOpen] = useState<boolean>(
         !!(location.state as { topic?: string } | null)?.topic,
     );
+    const [consumedNavTopic, setConsumedNavTopic] = useState<string | null>(null);
     const [deletingCampaignId, setDeletingCampaignId] = useState<string | null>(null);
+
+    const incomingTopic = (location.state as { topic?: string } | null)?.topic ?? null;
+    if (incomingTopic && incomingTopic !== consumedNavTopic) {
+        setConsumedNavTopic(incomingTopic);
+        setTopic(incomingTopic);
+        setIsComposerOpen(true);
+    }
     const CAMPAIGNS_PER_PAGE = 10;
 
     const { data, isLoading } = useCampaigns(page, CAMPAIGNS_PER_PAGE);
@@ -61,13 +69,6 @@ export function DashboardPage() {
         },
         retry: (failureCount, err) => !isNotFoundError(err) && failureCount < 2,
     });
-
-    useEffect(() => {
-        const nextState = location.state as { topic?: string } | null;
-        if (!nextState?.topic) return;
-        setTopic(nextState.topic);
-        setIsComposerOpen(true);
-    }, [location.state]);
 
     const generateMutation = useMutation({
         mutationFn: async () => {

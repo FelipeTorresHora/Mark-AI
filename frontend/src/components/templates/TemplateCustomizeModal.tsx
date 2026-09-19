@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X, Zap, Eye } from 'lucide-react';
@@ -21,15 +21,14 @@ function fillTemplate(body: string, values: Record<string, string>): string {
 export function TemplateCustomizeModal({ template, onClose }: Props) {
     const navigate = useNavigate();
     const [values, setValues] = useState<Record<string, string>>({});
+    const [boundTemplateId, setBoundTemplateId] = useState<string | null>(null);
 
-    // Reset values when template changes
-    useEffect(() => {
-        if (template) {
-            const initial: Record<string, string> = {};
-            template.placeholders.forEach((p) => { initial[p] = ''; });
-            setValues(initial);
-        }
-    }, [template]);
+    if (template && template.id !== boundTemplateId) {
+        setBoundTemplateId(template.id);
+        const initial: Record<string, string> = {};
+        template.placeholders.forEach((p) => { initial[p] = ''; });
+        setValues(initial);
+    }
 
     const filledBody = useMemo(
         () => (template ? fillTemplate(template.bodyTemplate, values) : ''),
