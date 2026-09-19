@@ -1,11 +1,18 @@
 import uuid
-from sqlalchemy import Column, String, Integer, Text, DateTime, func, ForeignKey
+from sqlalchemy import CheckConstraint, Column, String, Integer, Text, DateTime, func, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from src.database import Base
 
 
 class Post(Base):
     __tablename__ = "posts"
+    __table_args__ = (
+        CheckConstraint("platform IN ('X','LINKEDIN','INSTAGRAM')", name="ck_posts_platform"),
+        CheckConstraint(
+            "status IN ('DRAFT','UNDER_REVIEW','APPROVED','REJECTED','FINAL','PUBLISHED','SKIPPED')",
+            name="ck_posts_status",
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     campaign_id = Column(UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=True)

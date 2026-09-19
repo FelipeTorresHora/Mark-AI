@@ -4,6 +4,7 @@ import json
 from typing import AsyncGenerator
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.models.campaign import Campaign
 from src.models.post import Post
@@ -18,6 +19,11 @@ from src.services.langgraph_pipeline import (
 
 KEEPALIVE_INTERVAL_SECONDS = 12
 TERMINAL_CAMPAIGN_STATUSES = frozenset({"AWAITING_REVIEW", "DONE", "FAILED"})
+
+
+def _format_graph_error(exc: BaseException) -> str:
+    message = str(exc).strip()
+    return message or type(exc).__name__
 
 
 async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str, None]:
@@ -120,10 +126,30 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
             graph_error = "Nenhuma plataforma gerou conteúdo nesta rodada."
 
         campaign.status = "AWAITING_REVIEW" if not graph_error else "FAILED"
-        db.commit()
+        try:
+            db.commit()
+        except SQLAlchemyError as exc:
+            db.rollback()
+            return _format_graph_error(exc)
         return graph_error
 
-    existing_contents = get_review_interrupt_contents(thread_id)
+    existing_contents = None
+    checkpoint_exists = False
+    try:
+        existing_contents = await get_review_interrupt_contents(thread_id)
+        if existing_contents is None:
+            checkpoint_exists = await graph_checkpoint_exists(thread_id)
+    except Exception as exc:
+        campaign.status = "FAILED"
+        db.commit()
+        yield make_event("error", None, {"message": _format_graph_error(exc)})
+        yield make_event(
+            "generation_complete",
+            None,
+            {"campaign_id": campaign_id, "awaiting_review": False},
+        )
+        return
+
     if existing_contents is not None:
         yield plan_event
         graph_error = await finalize_from_contents(existing_contents)
@@ -138,12 +164,12 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
         )
         return
 
-    if graph_checkpoint_exists(thread_id):
+    if checkpoint_exists:
         yield plan_event
         deadline = asyncio.get_running_loop().time() + KEEPALIVE_INTERVAL_SECONDS * 60
         waited_contents: dict[str, list[str]] | None = None
         while asyncio.get_running_loop().time() < deadline:
-            waited_contents = get_review_interrupt_contents(thread_id)
+            waited_contents = await get_review_interrupt_contents(thread_id)
             if waited_contents is not None:
                 break
             yield keepalive_comment()
@@ -214,7 +240,7 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
                 emitter=emitter,
             )
         except Exception as exc:
-            graph_error = str(exc)
+            graph_error = _format_graph_error(exc)
             loop.call_soon_threadsafe(
                 events_queue.put_nowait,
                 ("error", None, {"message": graph_error}),

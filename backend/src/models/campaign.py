@@ -1,11 +1,17 @@
 import uuid
-from sqlalchemy import Column, String, Text, DateTime, func
+from sqlalchemy import CheckConstraint, Column, String, Text, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from src.database import Base
 
 
 class Campaign(Base):
     __tablename__ = "campaigns"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PENDING','GENERATING','AWAITING_REVIEW','DONE','FAILED')",
+            name="ck_campaigns_status",
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     topic = Column(Text, nullable=False)
