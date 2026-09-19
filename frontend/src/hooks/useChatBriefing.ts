@@ -1,4 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { api } from '../lib/api';
 import { toast } from '../lib/toast';
 import { type ChatMessage } from '../types';
@@ -10,7 +12,19 @@ interface ChatBriefingState {
     done: boolean;
 }
 
+function errorMessage(err: unknown): string {
+    if (isAxiosError(err)) {
+        const detail = err.response?.data?.detail;
+        if (typeof detail === 'string' && detail.trim()) {
+            return detail;
+        }
+    }
+    return 'Erro ao enviar mensagem. Tente novamente.';
+}
+
 export function useChatBriefing() {
+    const queryClient = useQueryClient();
+    const conversationIdRef = useRef<string | null>(null);
     const [state, setState] = useState<ChatBriefingState>({
         conversationId: null,
         messages: [],
@@ -19,30 +33,49 @@ export function useChatBriefing() {
     });
 
     const sendMessage = useCallback(async (message: string) => {
-        if (!message.trim() || state.isTyping) return;
+        const trimmed = message.trim();
+        if (!trimmed) return;
 
-        // Optimistic user message
-        const userMsg: ChatMessage = {
-            role: 'user',
-            content: message.trim(),
-            timestamp: new Date().toISOString(),
-        };
-
-        setState(prev => ({
-            ...prev,
-            messages: [...prev.messages, userMsg],
-            isTyping: true,
-        }));
+        let blocked = false;
+        setState(prev => {
+            if (prev.isTyping) {
+                blocked = true;
+                return prev;
+            }
+            return {
+                ...prev,
+                messages: [
+                    ...prev.messages,
+                    {
+                        role: 'user',
+                        content: trimmed,
+                        timestamp: new Date().toISOString(),
+                    },
+                ],
+                isTyping: true,
+            };
+        });
+        if (blocked) return;
 
         try {
-            const res = await api.post('/api/v1/chat/briefing', {
-                message: message.trim(),
-                conversation_id: state.conversationId,
+            const res = await api.post<{
+                conversation_id: string;
+                reply: string;
+                done: boolean;
+            }>('/api/v1/chat/briefing', {
+                message: trimmed,
+                conversation_id: conversationIdRef.current,
             });
+
+            conversationIdRef.current = res.data.conversation_id;
+            const replyText = (res.data.reply || '').trim();
+            if (!replyText) {
+                throw new Error('empty_reply');
+            }
 
             const assistantMsg: ChatMessage = {
                 role: 'assistant',
-                content: res.data.reply,
+                content: replyText,
                 timestamp: new Date().toISOString(),
             };
 
@@ -55,18 +88,23 @@ export function useChatBriefing() {
             }));
 
             if (res.data.done) {
-                toast.success('Perfil da marca criado com sucesso! 🎉');
+                void queryClient.invalidateQueries({ queryKey: ['brand-profile'] });
+                toast.success('Perfil da marca criado com sucesso!');
             }
-        } catch {
+        } catch (err) {
             setState(prev => ({
                 ...prev,
+                messages: prev.messages.filter(
+                    (m, i) => !(i === prev.messages.length - 1 && m.role === 'user' && m.content === trimmed),
+                ),
                 isTyping: false,
             }));
-            toast.error('Erro ao enviar mensagem. Tente novamente.');
+            toast.error(errorMessage(err));
         }
-    }, [state.conversationId, state.isTyping]);
+    }, [queryClient]);
 
     const clearChat = useCallback(() => {
+        conversationIdRef.current = null;
         setState({
             conversationId: null,
             messages: [],

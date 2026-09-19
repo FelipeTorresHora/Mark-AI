@@ -1,14 +1,25 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime
+from sqlalchemy.orm.attributes import flag_modified
+
 from src.database import get_db
 from src.dependencies.auth import get_current_user
+from src.models.brand_profile import BrandProfile
 from src.models.chat_session import ChatSession
 from src.models.user import User
 from src.schemas.chat import ChatMessage, ChatRequest, ChatResponse, ChatSessionResponse
-from src.services.chat_cmo import chat_cmo_reply
+from src.services.chat_cmo import CmoChatError, chat_cmo_reply
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+def _append_message(session: ChatSession, message: dict) -> None:
+    messages = list(session.messages or [])
+    messages.append(message)
+    session.messages = messages
+    flag_modified(session, "messages")
 
 
 @router.post("/briefing", response_model=ChatResponse)
@@ -18,13 +29,16 @@ def send_briefing_message(
     current_user: User = Depends(get_current_user),
 ):
     """Envia mensagem para o CMO IA e recebe resposta."""
-    # Buscar ou criar sessão
+    message = (body.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=422, detail="Mensagem não pode ser vazia.")
+
     session: ChatSession | None = None
     if body.conversation_id:
         session = db.query(ChatSession).filter(
             ChatSession.id == body.conversation_id,
             ChatSession.user_id == current_user.id,
-            ChatSession.is_active == True,
+            ChatSession.is_active.is_(True),
         ).first()
 
     if not session:
@@ -33,32 +47,33 @@ def send_briefing_message(
         db.commit()
         db.refresh(session)
 
-    # Adicionar mensagem do usuário
     user_msg = {
         "role": "user",
-        "content": body.message,
+        "content": message,
         "timestamp": datetime.utcnow().isoformat(),
     }
-    session.messages = session.messages or []
-    session.messages.append(user_msg)
+    _append_message(session, user_msg)
 
-    # Gerar resposta do CMO
-    reply_text, brand_profile = chat_cmo_reply(body.message, session.messages)
+    try:
+        reply_text, brand_profile = chat_cmo_reply(
+            message,
+            list(session.messages or []),
+            user_id=str(current_user.id),
+        )
+    except CmoChatError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    # Adicionar resposta do assistente
     assistant_msg = {
         "role": "assistant",
         "content": reply_text,
         "timestamp": datetime.utcnow().isoformat(),
     }
-    session.messages.append(assistant_msg)
+    _append_message(session, assistant_msg)
 
-    # Se brand_profile foi gerado, salvar/atualizar
     if brand_profile:
         session.brand_profile_complete = True
 
-        # Upsert brand profile
-        from src.models.brand_profile import BrandProfile
         bp = db.query(BrandProfile).filter(BrandProfile.user_id == current_user.id).first()
         if bp:
             bp.name = brand_profile.get("name", bp.name)
