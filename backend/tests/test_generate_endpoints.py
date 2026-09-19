@@ -151,6 +151,7 @@ def test_generation_stream_processes_multiple_posts(
     for post in all_posts:
         db_session.refresh(post)
 
+    assert any('"event": "generation_plan"' in event for event in events)
     assert len([event for event in events if '"event": "writer_done"' in event]) == 2
     assert campaign.status == "AWAITING_REVIEW"
     assert x_posts[0].status == "UNDER_REVIEW"
@@ -184,3 +185,51 @@ def test_generation_stream_resumes_terminal_campaign_without_rerunning_graph(
     assert not ran["value"]
     assert any('"generation_complete"' in event for event in events)
     assert any('"resumed": true' in event for event in events)
+
+
+def test_generation_stream_skips_instagram_without_account(
+    db_session,
+    user_factory,
+    campaign_factory,
+    post_factory,
+    monkeypatch,
+):
+    user = user_factory()
+    campaign = campaign_factory(user)
+    post_factory(campaign, platform="X", content=None)
+    post_factory(campaign, platform="INSTAGRAM", content=None)
+
+    monkeypatch.setattr(
+        "src.services.generation_platforms.settings.instagram_app_id",
+        "app-id",
+    )
+    monkeypatch.setattr(
+        "src.services.generation_platforms.settings.instagram_app_secret",
+        "secret",
+    )
+
+    async def fake_run_until_review(**kwargs):
+        emitter = kwargs.get("emitter")
+        if emitter:
+            for platform in kwargs.get("platforms", []):
+                emitter(
+                    "writer_done",
+                    platform,
+                    {
+                        "post_id": "1",
+                        "content": f"{platform} ok",
+                        "variant_index": 1,
+                        "platform_total": 1,
+                    },
+                )
+        return {"platform_contents": {"X": "X ok"}, "__interrupt__": [object()]}
+
+    async def collect_events():
+        return [event async for event in generation_stream(str(campaign.id), db_session)]
+
+    monkeypatch.setattr("src.services.sse.run_until_review", fake_run_until_review)
+
+    events = asyncio.run(collect_events())
+    assert any('"event": "platform_skipped"' in e and "INSTAGRAM" in e for e in events)
+    assert any('"event": "writer_done"' in e and "X" in e for e in events)
+    assert any('"event": "generation_complete"' in e for e in events)

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from src.models.campaign import Campaign
 from src.models.post import Post
+from src.services.generation_platforms import platform_generation_block_reason
 from src.services.langgraph_pipeline import new_thread_id, run_until_review
 
 KEEPALIVE_INTERVAL_SECONDS = 12
@@ -55,12 +56,20 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
         .all()
     )
     posts_by_platform: dict[str, Post] = {}
+    platform_totals: dict[str, int] = {}
     for post in posts:
+        platform_totals[post.platform] = platform_totals.get(post.platform, 0) + 1
         if post.platform not in posts_by_platform:
             posts_by_platform[post.platform] = post
 
     platforms = list(posts_by_platform.keys())
     platform_post_ids = {p: str(posts_by_platform[p].id) for p in platforms}
+
+    yield make_event(
+        "generation_plan",
+        None,
+        {"platforms": {p: platform_totals.get(p, 1) for p in platforms}},
+    )
 
     events_queue: asyncio.Queue[tuple[str, str | None, dict]] = asyncio.Queue()
     loop = asyncio.get_running_loop()
@@ -70,6 +79,28 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
         loop.call_soon_threadsafe(events_queue.put_nowait, (event, platform, data))
 
     audience = campaign.audience
+    user_id = campaign.user_id
+
+    platforms_for_graph: list[str] = []
+    for platform in platforms:
+        skip_reason = (
+            platform_generation_block_reason(db, platform, user_id) if user_id else None
+        )
+        if skip_reason:
+            post_id = platform_post_ids.get(platform, "")
+            total = platform_totals.get(platform, 1)
+            emitter(
+                "platform_skipped",
+                platform,
+                {
+                    "post_id": post_id,
+                    "message": skip_reason,
+                    "variant_index": 1,
+                    "platform_total": total,
+                },
+            )
+            continue
+        platforms_for_graph.append(platform)
 
     graph_result: dict = {}
     graph_error: str | None = None
@@ -77,12 +108,16 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
     async def run_graph():
         nonlocal graph_result, graph_error
         try:
+            if not platforms_for_graph:
+                return
             graph_result = await run_until_review(
                 thread_id=campaign.graph_thread_id,
                 objective=objective,
                 brand_context=campaign.brand_context,
-                platforms=platforms,
-                platform_post_ids=platform_post_ids,
+                platforms=platforms_for_graph,
+                platform_post_ids={
+                    p: platform_post_ids[p] for p in platforms_for_graph
+                },
                 audience=audience,
                 user_id=str(campaign.user_id) if campaign.user_id else None,
                 campaign_id=str(campaign.id),
@@ -128,17 +163,26 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
     contents = (graph_result or {}).get("platform_contents") or {}
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if campaign:
+        any_generated = False
         for platform, post in posts_by_platform.items():
             if platform in contents:
                 post.content = contents[platform]
                 post.status = "UNDER_REVIEW"
+                any_generated = True
             elif graph_error:
                 post.status = "DRAFT"
+
+        if graph_error and any_generated:
+            graph_error = None
+
         campaign.status = "AWAITING_REVIEW" if not graph_error else "FAILED"
         db.commit()
 
     yield make_event(
         "generation_complete",
         None,
-        {"campaign_id": campaign_id, "awaiting_review": not graph_error},
+        {
+            "campaign_id": campaign_id,
+            "awaiting_review": not graph_error,
+        },
     )

@@ -14,6 +14,7 @@ class BrandContextInput(BaseModel):
 class PostsPerPlatformInput(BaseModel):
     X: int = Field(default=2, ge=1, le=4)
     LINKEDIN: int = Field(default=2, ge=1, le=4)
+    INSTAGRAM: int = Field(default=0, ge=0, le=4)
 
 
 class GenerateRequest(BaseModel):

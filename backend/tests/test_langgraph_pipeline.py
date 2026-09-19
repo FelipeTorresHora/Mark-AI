@@ -36,6 +36,47 @@ def test_graph_interrupts_for_human_review(monkeypatch):
     assert "LINKEDIN" in state.get("platform_contents", {})
 
 
+def test_graph_continues_after_platform_timeout(monkeypatch):
+    call_count = 0
+
+    async def slow_generate(platform, objective, brand_context, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if platform == "INSTAGRAM":
+            import asyncio
+
+            await asyncio.sleep(60)
+        return f"Post {platform}"
+
+    monkeypatch.setattr("src.services.langgraph_pipeline.generate_post", slow_generate)
+    monkeypatch.setattr("src.services.langgraph_pipeline.settings.generation_timeout_seconds", 0.05)
+
+    thread_id = new_thread_id()
+
+    async def run():
+        return await run_until_review(
+            thread_id=thread_id,
+            objective="Objetivo",
+            brand_context={
+                "name": "M",
+                "niche": "N",
+                "tone": "T",
+                "target_audience": "A",
+                "unique_value": "U",
+            },
+            platforms=["X", "INSTAGRAM"],
+            platform_post_ids={"X": "p1", "INSTAGRAM": "p2"},
+            audience=None,
+            user_id=None,
+            campaign_id=None,
+            emitter=None,
+        )
+
+    state = asyncio.run(run())
+    assert "X" in state.get("platform_contents", {})
+    assert "INSTAGRAM" not in state.get("platform_contents", {})
+
+
 def test_graph_resume_approve_completes(monkeypatch):
     async def fake_generate_post(platform, objective, brand_context, **kwargs):
         return f"Post {platform}"

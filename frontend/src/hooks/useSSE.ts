@@ -11,22 +11,26 @@ interface VariantEventData {
 }
 
 export type GenerationEvent =
+    | { event: 'generation_plan'; platform: null; data: { platforms: Partial<Record<Platform, number>> } }
     | { event: 'writer_start'; platform: Platform; data: VariantEventData }
     | { event: 'writer_done'; platform: Platform; data: VariantEventData & { content: string } }
+    | { event: 'platform_skipped'; platform: Platform; data: VariantEventData & { message: string } }
     | { event: 'generation_complete'; platform: null; data: { campaign_id: string; awaiting_review?: boolean; resumed?: boolean } }
     | { event: 'error'; platform: Platform | null; data: Partial<VariantEventData> & { message: string } };
 
-export type PlatformStatus = 'idle' | 'writing' | 'done' | 'error';
+export type PlatformStatus = 'idle' | 'writing' | 'done' | 'error' | 'skipped';
 
 export interface PlatformProgress {
     total: number;
     started: number;
     done: number;
     errors: number;
+    skipped: number;
 }
 
 export interface SSEState {
     events: GenerationEvent[];
+    activePlatforms: Platform[];
     platformStatus: Record<Platform, PlatformStatus>;
     platformProgress: Record<Platform, PlatformProgress>;
     isConnected: boolean;
@@ -37,18 +41,20 @@ export interface SSEState {
 const TERMINAL_CAMPAIGN_STATUSES = new Set(['AWAITING_REVIEW', 'DONE', 'FAILED']);
 const MAX_RECONNECT_ATTEMPTS = 8;
 const ERROR_DEBOUNCE_MS = 4000;
+const PLATFORM_ORDER: Platform[] = ['X', 'LINKEDIN', 'INSTAGRAM'];
 
 function createInitialPlatformProgress(): Record<Platform, PlatformProgress> {
     return {
-        X: { total: 0, started: 0, done: 0, errors: 0 },
-        LINKEDIN: { total: 0, started: 0, done: 0, errors: 0 },
-        INSTAGRAM: { total: 0, started: 0, done: 0, errors: 0 },
+        X: { total: 0, started: 0, done: 0, errors: 0, skipped: 0 },
+        LINKEDIN: { total: 0, started: 0, done: 0, errors: 0, skipped: 0 },
+        INSTAGRAM: { total: 0, started: 0, done: 0, errors: 0, skipped: 0 },
     };
 }
 
 function createInitialState(): SSEState {
     return {
         events: [],
+        activePlatforms: [],
         platformStatus: { X: 'idle', LINKEDIN: 'idle', INSTAGRAM: 'idle' },
         platformProgress: createInitialPlatformProgress(),
         isConnected: false,
@@ -58,10 +64,18 @@ function createInitialState(): SSEState {
 }
 
 function getPlatformStatus(progress: PlatformProgress): PlatformStatus {
+    if (progress.skipped > 0) return 'skipped';
     if (progress.errors > 0) return 'error';
     if (progress.total > 0 && progress.done >= progress.total) return 'done';
     if (progress.started > 0) return 'writing';
+    if (progress.total > 0 && progress.done + progress.errors + progress.skipped >= progress.total) {
+        return progress.errors > 0 ? 'error' : 'done';
+    }
     return 'idle';
+}
+
+function platformsFromPlan(plan: Partial<Record<Platform, number>>): Platform[] {
+    return PLATFORM_ORDER.filter((p) => (plan[p] ?? 0) > 0);
 }
 
 /** Stable key for the stream URL without JWT (token refresh must not reset progress). */
@@ -90,15 +104,30 @@ function applyPacket(prev: SSEState, packet: GenerationEvent): SSEState {
         INSTAGRAM: { ...prev.platformProgress.INSTAGRAM },
     };
     const platformStatus = { ...prev.platformStatus };
+    let activePlatforms = [...prev.activePlatforms];
+
+    if (packet.event === 'generation_plan') {
+        activePlatforms = platformsFromPlan(packet.data.platforms);
+        for (const platform of activePlatforms) {
+            const total = packet.data.platforms[platform] ?? 0;
+            platformProgress[platform].total = total;
+            platformStatus[platform] = getPlatformStatus(platformProgress[platform]);
+        }
+    }
 
     if (packet.platform) {
         const next = platformProgress[packet.platform];
+        if (!activePlatforms.includes(packet.platform)) {
+            activePlatforms = [...activePlatforms, packet.platform];
+        }
         next.total = packet.data.platform_total ?? next.total;
 
         if (packet.event === 'writer_start') {
             next.started = Math.min(next.total, next.started + 1);
         } else if (packet.event === 'writer_done') {
             next.done = Math.min(next.total, next.done + 1);
+        } else if (packet.event === 'platform_skipped') {
+            next.skipped = Math.min(next.total || 1, next.skipped + 1);
         } else if (packet.event === 'error') {
             next.errors = Math.min(next.total || next.errors + 1, next.errors + 1);
         }
@@ -108,7 +137,7 @@ function applyPacket(prev: SSEState, packet: GenerationEvent): SSEState {
 
     const isComplete = packet.event === 'generation_complete';
 
-    return { ...prev, events, platformProgress, platformStatus, isComplete, error: null };
+    return { ...prev, events, activePlatforms, platformProgress, platformStatus, isComplete, error: null };
 }
 
 async function refreshAccessTokenForSse(): Promise<string | null> {
