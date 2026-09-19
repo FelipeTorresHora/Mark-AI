@@ -4,8 +4,7 @@ import { X, Calendar, Clock } from 'lucide-react';
 import { type Post } from '../../types';
 import { useEditPost } from '../../hooks/useEditPost';
 import { useCancelXPost } from '../../hooks/useXPosts';
-import { XPreview } from '../previews/XPreview';
-import { LinkedInPreview } from '../previews/LinkedInPreview';
+import { PostPreview, platformLabel } from '../../lib/postPreview';
 import { Button } from '../common/Button';
 import { cn } from '../../lib/utils';
 
@@ -42,7 +41,10 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
 
     const charCount = content.length;
     const isX = post?.platform === 'X';
-    const isOverLimit = isX && charCount > 280;
+    const isInstagram = post?.platform === 'INSTAGRAM';
+    const isOverLimit =
+        (isX && charCount > 280) ||
+        (isInstagram && charCount > 2200);
     const scheduleIsPast = scheduleEnabled && scheduledAt && new Date(scheduledAt).getTime() <= Date.now();
     const canCancelSchedule = isX && !!post?.scheduled_at && ['pending', 'failed'].includes(post.publish_status ?? 'pending');
 
@@ -78,12 +80,12 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
                             <div className="flex items-center gap-3">
                                 <h2 className="text-lg font-bold app-text">Editar Post</h2>
                                 <span className={cn(
-                                    'text-xs font-bold px-2.5 py-0.5 rounded-full',
-                                    isX
-                                        ? 'bg-slate-900 text-white'
-                                        : 'bg-[#0a66c2] text-white'
+                                    'text-xs font-bold px-2.5 py-0.5 rounded-full text-white',
+                                    isX && 'bg-slate-900',
+                                    post.platform === 'LINKEDIN' && 'bg-[#0a66c2]',
+                                    isInstagram && 'bg-gradient-to-r from-[#f9ce34] via-[#ee2a7b] to-[#6228d7]',
                                 )}>
-                                    {isX ? 'Twitter / X' : 'LinkedIn'}
+                                    {post ? platformLabel(post.platform) : ''}
                                 </span>
                             </div>
                             <button
@@ -109,9 +111,9 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
                                     placeholder="Escreva o conteúdo do post..."
                                 />
                                 <div className="flex justify-end mt-1.5">
-                                    {isX && (
+                                    {(isX || isInstagram) && (
                                         <span className={cn('text-xs font-medium', isOverLimit ? 'text-red-500' : 'app-text-soft')}>
-                                            {charCount}/280
+                                            {charCount}/{isX ? 280 : 2200}
                                         </span>
                                     )}
                                 </div>
@@ -160,10 +162,7 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
                                 <p className="text-xs font-semibold app-text-muted uppercase tracking-wide mb-3">
                                     Preview ao vivo
                                 </p>
-                                {isX
-                                    ? <XPreview content={content} />
-                                    : <LinkedInPreview content={content} />
-                                }
+                                {post && <PostPreview platform={post.platform} content={content} />}
                             </div>
                         </div>
 

@@ -30,10 +30,11 @@ describe('GenerationPage', () => {
                     data: { post_id: '1', content: 'Post X', variant_index: 2, platform_total: 4 },
                 },
             ],
-            platformStatus: { X: 'writing', LINKEDIN: 'done' },
+            platformStatus: { X: 'writing', LINKEDIN: 'done', INSTAGRAM: 'idle' },
             platformProgress: {
                 X: { total: 4, started: 3, done: 2, errors: 0 },
                 LINKEDIN: { total: 2, started: 2, done: 2, errors: 0 },
+                INSTAGRAM: { total: 0, started: 0, done: 0, errors: 0 },
             },
             isConnected: true,
             isComplete: false,

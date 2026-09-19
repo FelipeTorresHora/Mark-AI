@@ -8,7 +8,7 @@ import { EditPostModal } from '../components/posts/EditPostModal';
 import { Pagination } from '../components/common/Pagination';
 import { Button } from '../components/common/Button';
 import { cn, formatScheduledAt } from '../lib/utils';
-import { CheckCircle, XCircle, Pencil, Calendar, Twitter, Linkedin, FileText, X as XIcon, MoreHorizontal, Send, Clock } from 'lucide-react';
+import { CheckCircle, XCircle, Pencil, Calendar, Twitter, Linkedin, Camera, FileText, X as XIcon, MoreHorizontal, Send, Clock } from 'lucide-react';
 import type { PostStatus, Platform } from '../types';
 
 type StatusFilter = 'ALL' | PostStatus;
@@ -327,20 +327,25 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
 
 function PlatformToggle({ platform, active, onClick }: { platform: Platform; active: boolean; onClick: () => void }) {
     const isX = platform === 'X';
+    const isLinkedIn = platform === 'LINKEDIN';
+    const isInstagram = platform === 'INSTAGRAM';
+    const activeClass = isX
+        ? 'bg-slate-900 text-white border-slate-900'
+        : isLinkedIn
+            ? 'bg-[#0a66c2] text-white border-[#0a66c2]'
+            : 'bg-gradient-to-r from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] text-white border-transparent';
     return (
         <button
             onClick={onClick}
             className={cn(
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors',
                 active
-                    ? isX
-                        ? 'bg-slate-900 text-white border-slate-900'
-                        : 'bg-[#0a66c2] text-white border-[#0a66c2]'
+                    ? activeClass
                     : 'app-panel text-[var(--app-text-secondary)] hover:border-[rgba(14,15,12,0.18)] dark:hover:border-slate-600'
             )}
         >
-            {isX ? <Twitter size={14} /> : <Linkedin size={14} />}
-            {isX ? 'Twitter / X' : 'LinkedIn'}
+            {isX ? <Twitter size={14} /> : isInstagram ? <Camera size={14} /> : <Linkedin size={14} />}
+            {isX ? 'Twitter / X' : isInstagram ? 'Instagram' : 'LinkedIn'}
         </button>
     );
 }
@@ -405,6 +410,7 @@ export function PostsPage() {
 
                     <PlatformToggle platform="X" active={platformFilter === 'X'} onClick={() => togglePlatform('X')} />
                     <PlatformToggle platform="LINKEDIN" active={platformFilter === 'LINKEDIN'} onClick={() => togglePlatform('LINKEDIN')} />
+                    <PlatformToggle platform="INSTAGRAM" active={platformFilter === 'INSTAGRAM'} onClick={() => togglePlatform('INSTAGRAM')} />
 
                     <div className="w-px bg-[var(--app-border)] self-stretch mx-1" />
 

@@ -12,9 +12,10 @@ import type { Platform } from '../types';
 const PLATFORM_LABELS: Record<Platform, string> = {
     X: 'Twitter / X',
     LINKEDIN: 'LinkedIn',
+    INSTAGRAM: 'Instagram',
 };
 
-const PLATFORM_ORDER: Platform[] = ['X', 'LINKEDIN'];
+const PLATFORM_ORDER: Platform[] = ['X', 'LINKEDIN', 'INSTAGRAM'];
 
 function PlatformCard({
     platform,

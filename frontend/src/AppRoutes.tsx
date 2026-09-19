@@ -53,6 +53,7 @@ export const router = createBrowserRouter([
     { path: '/register', element: <RegisterPage /> },
     { path: '/oauth/callback/x', element: <OAuthCallbackPage platform="x" /> },
     { path: '/oauth/callback/linkedin', element: <OAuthCallbackPage platform="linkedin" /> },
+    { path: '/oauth/callback/instagram', element: <OAuthCallbackPage platform="instagram" /> },
 
     // Rotas protegidas (ProtectedLayout como wrapper pathless)
     {

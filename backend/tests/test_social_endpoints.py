@@ -404,3 +404,87 @@ def test_publish_post_to_linkedin_requires_reconnect_when_expired(
 
     assert response.status_code == 400
     assert "Reconecte a conta" in response.json()["detail"]
+
+
+def test_connect_instagram_url_returns_validated_authorization_url(
+    client, user_factory, auth_headers, monkeypatch
+):
+    user = user_factory()
+    monkeypatch.setattr(
+        "src.routers.social.oauth_instagram.get_authorization_url",
+        lambda state: f"https://www.facebook.com/v21.0/dialog/oauth?state={state}",
+    )
+
+    response = client.get(
+        "/api/v1/social/connect/instagram/url",
+        headers=auth_headers(user),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["authorization_url"].startswith("https://www.facebook.com/")
+
+
+def test_callback_instagram_persists_account_and_redirects(
+    client,
+    user_factory,
+    db_session,
+    monkeypatch,
+):
+    user = user_factory()
+    state = build_state(str(user.id), "INSTAGRAM")
+    monkeypatch.setattr(
+        "src.routers.social.oauth_instagram.exchange_code_for_token",
+        lambda code: {"access_token": "token-ig", "expires_in": 5184000},
+    )
+    monkeypatch.setattr(
+        "src.routers.social.oauth_instagram.get_user_info",
+        lambda access_token: {"id": "ig-user-1", "username": "markai"},
+    )
+
+    response = client.get(
+        "/api/v1/social/callback/instagram",
+        params={"code": "abc", "state": state},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["location"].endswith("/configuracoes?connected=instagram")
+
+    account = db_session.query(SocialAccount).filter(SocialAccount.user_id == user.id).first()
+    assert account is not None
+    assert account.platform == "INSTAGRAM"
+    assert account.platform_user_id == "ig-user-1"
+
+
+def test_publish_post_to_instagram_updates_post(
+    client,
+    user_factory,
+    campaign_factory,
+    post_factory,
+    social_account_factory,
+    auth_headers,
+    db_session,
+    monkeypatch,
+):
+    user = user_factory()
+    campaign = campaign_factory(user)
+    post = post_factory(campaign, platform="INSTAGRAM", status="FINAL", content="Legenda IG")
+    social_account_factory(
+        user,
+        platform="INSTAGRAM",
+        platform_user_id="ig-123",
+        access_token="token-ig",
+    )
+    monkeypatch.setattr(
+        "src.routers.social.oauth_instagram.publish_post",
+        lambda token, ig_user_id, text: "ig-media-1",
+    )
+
+    response = client.post(f"/api/v1/social/posts/{post.id}/publish", headers=auth_headers(user))
+
+    assert response.status_code == 200
+    assert response.json()["platform"] == "INSTAGRAM"
+    assert response.json()["platform_post_id"] == "ig-media-1"
+
+    db_session.refresh(post)
+    assert post.status == "PUBLISHED"

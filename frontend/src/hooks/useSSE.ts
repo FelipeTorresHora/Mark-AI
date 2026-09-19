@@ -35,13 +35,14 @@ function createInitialPlatformProgress(): Record<Platform, PlatformProgress> {
     return {
         X: { total: 0, started: 0, done: 0, errors: 0 },
         LINKEDIN: { total: 0, started: 0, done: 0, errors: 0 },
+        INSTAGRAM: { total: 0, started: 0, done: 0, errors: 0 },
     };
 }
 
 function createInitialState(): SSEState {
     return {
         events: [],
-        platformStatus: { X: 'idle', LINKEDIN: 'idle' },
+        platformStatus: { X: 'idle', LINKEDIN: 'idle', INSTAGRAM: 'idle' },
         platformProgress: createInitialPlatformProgress(),
         isConnected: false,
         isComplete: false,
@@ -89,6 +90,7 @@ export function useSSE(endpoint: string | null): SSEState {
                     const platformProgress = {
                         X: { ...prev.platformProgress.X },
                         LINKEDIN: { ...prev.platformProgress.LINKEDIN },
+                        INSTAGRAM: { ...prev.platformProgress.INSTAGRAM },
                     };
                     const platformStatus = { ...prev.platformStatus };
 

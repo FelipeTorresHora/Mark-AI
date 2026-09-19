@@ -44,6 +44,17 @@ class Settings(BaseSettings):
     linkedin_api_version: str = "202504"
     linkedin_scopes: str = "openid profile w_member_social"
 
+    # Instagram (Meta Graph) OAuth 2.0
+    instagram_app_id: str = ""
+    instagram_app_secret: str = ""
+    instagram_redirect_uri: str = "http://localhost:8000/api/v1/social/callback/instagram"
+    instagram_graph_api_version: str = "v21.0"
+    instagram_scopes: str = (
+        "instagram_basic,instagram_content_publish,pages_show_list,"
+        "pages_read_engagement,business_management"
+    )
+    instagram_publish_image_url: str = ""
+
     # Resend email
     resend_api_key: str = ""
     resend_from_email: str = "notificacoes@seudominio.com"
