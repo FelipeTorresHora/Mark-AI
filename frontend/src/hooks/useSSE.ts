@@ -139,9 +139,9 @@ async function pollCampaignTerminal(campaignId: string): Promise<boolean> {
 }
 
 export function useSSE(endpoint: string | null): SSEState {
-    const [state, setState] = useState<SSEState>(() => createInitialState());
     const streamKey = sseStreamKey(endpoint);
-    const [trackedStreamKey, setTrackedStreamKey] = useState(streamKey);
+    const [state, setState] = useState<SSEState>(() => createInitialState());
+    const [activeStreamKey, setActiveStreamKey] = useState(streamKey);
     const completedRef = useRef(false);
     const reconnectAttemptsRef = useRef(0);
     const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -153,20 +153,19 @@ export function useSSE(endpoint: string | null): SSEState {
         }
     }, []);
 
-    if (streamKey !== trackedStreamKey) {
-        setTrackedStreamKey(streamKey);
+    if (streamKey !== activeStreamKey) {
+        setActiveStreamKey(streamKey);
         setState(createInitialState());
-        completedRef.current = false;
-        reconnectAttemptsRef.current = 0;
-        clearErrorTimer();
     }
 
     useEffect(() => {
-        if (!endpoint) return;
-
         completedRef.current = false;
         reconnectAttemptsRef.current = 0;
         clearErrorTimer();
+    }, [activeStreamKey, clearErrorTimer]);
+
+    useEffect(() => {
+        if (!endpoint) return;
 
         let es: EventSource | null = new EventSource(endpoint);
         let disposed = false;
