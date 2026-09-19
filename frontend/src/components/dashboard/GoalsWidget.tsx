@@ -170,6 +170,15 @@ export function GoalsWidget() {
                             Conectar conta em Empresa →
                         </button>
                     )}
+                    {data.goals.some((g) => g.key === 'first_generation' && !g.completed) && (
+                        <button
+                            type="button"
+                            onClick={() => navigate('/objetivo')}
+                            className="mt-4 ml-0 sm:ml-4 text-sm font-semibold text-[#163300] dark:text-[#9fe870] hover:underline block"
+                        >
+                            Iniciar rodada em Objetivo →
+                        </button>
+                    )}
                 </>
             )}
         </Card>

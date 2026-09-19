@@ -163,7 +163,7 @@ describe('DashboardPage', () => {
         mockDashboardRequests({});
         render(<DashboardPage />, { wrapper: createWrapper() });
 
-        fireEvent.click(screen.getByText('Definir objetivo'));
+        fireEvent.click(screen.getByText('Nova rodada (Objetivo)'));
 
         expect(navigateMock).toHaveBeenCalledWith('/objetivo');
     });

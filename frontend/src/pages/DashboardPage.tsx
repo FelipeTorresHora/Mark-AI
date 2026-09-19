@@ -58,7 +58,7 @@ export function DashboardPage() {
                     onClick={() => navigate('/objetivo')}
                     className="flex items-center gap-2 px-6"
                 >
-                    <Target size={18} aria-hidden /> Definir objetivo
+                    <Target size={18} aria-hidden /> Nova rodada (Objetivo)
                 </Button>
             </div>
 
@@ -77,7 +77,7 @@ export function DashboardPage() {
                     <FileText size={48} className="app-text-soft mb-4" />
                     <h2 className="text-xl font-semibold app-text-secondary mb-2">Nenhuma campanha ainda</h2>
                     <p className="app-text-soft mb-6 max-w-md">
-                        Comece pelo seu objetivo — a IA gera posts e você aprova ou refaz com instruções.
+                        Use Objetivo para descrever esta rodada — a IA gera posts e você aprova ou refaz com instruções.
                     </p>
                     <Button
                         variant="primary"
