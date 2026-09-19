@@ -7,7 +7,7 @@ import { useCancelXPost } from '../../hooks/useXPosts';
 import { XPreview } from '../previews/XPreview';
 import { LinkedInPreview } from '../previews/LinkedInPreview';
 import { Button } from '../common/Button';
-import { cn } from '../../lib/utils';
+import { cn, isDatetimeLocalBeforeNow } from '../../lib/utils';
 
 interface EditPostModalProps {
     post: Post | null;
@@ -25,11 +25,13 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
     const [content, setContent] = useState(() => post?.content ?? '');
     const [scheduleEnabled, setScheduleEnabled] = useState(() => initialMode === 'schedule' || !!post?.scheduled_at);
     const [scheduledAt, setScheduledAt] = useState(() => (post?.scheduled_at ? toDatetimeLocal(post.scheduled_at) : ''));
+    const [scheduleNowMs] = useState(() => Date.now());
     const { editPost, isEditing } = useEditPost();
     const cancelXPost = useCancelXPost();
 
     async function handleSave() {
         if (!post) return;
+        if (scheduleEnabled && scheduledAt && new Date(scheduledAt).getTime() <= Date.now()) return;
         await editPost({
             id: post.id,
             content,
@@ -43,7 +45,7 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
     const charCount = content.length;
     const isX = post?.platform === 'X';
     const isOverLimit = isX && charCount > 280;
-    const scheduleIsPast = scheduleEnabled && scheduledAt && new Date(scheduledAt).getTime() <= Date.now();
+    const scheduleIsPast = scheduleEnabled && scheduledAt && isDatetimeLocalBeforeNow(scheduledAt, scheduleNowMs);
     const canCancelSchedule = isX && !!post?.scheduled_at && ['pending', 'failed'].includes(post.publish_status ?? 'pending');
 
     return (
