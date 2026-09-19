@@ -132,6 +132,8 @@ def _normalize_goal_key(goal_key: str) -> str:
 
 
 def normalize_audience(raw: str | None) -> AudienceType:
+    if raw == "mei":
+        return "mei_loja_liberal"
     if raw in FEATURED_BY_AUDIENCE:
         return raw  # type: ignore[return-value]
     return "mei_loja_liberal"

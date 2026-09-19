@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 AudienceType = Literal["mei_loja_liberal", "founder", "faceless"]
+AudienceInput = Literal["mei_loja_liberal", "founder", "faceless", "mei"]
 
 
 class GoalItemResponse(BaseModel):
@@ -26,4 +27,4 @@ class GoalsResponse(BaseModel):
 
 
 class UpdateAudienceRequest(BaseModel):
-    audience: AudienceType
+    audience: AudienceInput
