@@ -174,6 +174,8 @@ export function useSSE(endpoint: string | null): SSEState {
     const completedRef = useRef(false);
     const reconnectAttemptsRef = useRef(0);
     const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const endpointRef = useRef(endpoint);
+    endpointRef.current = endpoint;
 
     const clearErrorTimer = useCallback(() => {
         if (errorTimerRef.current) {
@@ -194,9 +196,10 @@ export function useSSE(endpoint: string | null): SSEState {
     }, [activeStreamKey, clearErrorTimer]);
 
     useEffect(() => {
-        if (!endpoint) return;
+        const initialEndpoint = endpointRef.current;
+        if (!streamKey || !initialEndpoint) return;
 
-        let es: EventSource | null = new EventSource(endpoint);
+        let es: EventSource | null = new EventSource(initialEndpoint);
         let disposed = false;
 
         const scheduleTerminalError = (message: string) => {
@@ -221,7 +224,7 @@ export function useSSE(endpoint: string | null): SSEState {
         const tryRecoverConnection = async () => {
             if (disposed || completedRef.current) return;
 
-            const campaignId = parseCampaignId(endpoint);
+            const campaignId = parseCampaignId(endpointRef.current);
             if (campaignId && (await pollCampaignTerminal(campaignId))) {
                 completedRef.current = true;
                 clearErrorTimer();
@@ -246,7 +249,7 @@ export function useSSE(endpoint: string | null): SSEState {
             if (disposed || completedRef.current) return;
 
             if (freshToken && campaignId) {
-                const base = sseStreamKey(endpoint);
+                const base = sseStreamKey(endpointRef.current);
                 if (base) {
                     connectWithUrl(`${base}?token=${encodeURIComponent(freshToken)}`);
                     return;
@@ -312,7 +315,7 @@ export function useSSE(endpoint: string | null): SSEState {
             clearErrorTimer();
             es?.close();
         };
-    }, [endpoint, clearErrorTimer]);
+    }, [streamKey, clearErrorTimer]);
 
     return state;
 }

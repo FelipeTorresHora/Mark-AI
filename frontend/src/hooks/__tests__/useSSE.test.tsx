@@ -169,4 +169,23 @@ describe('useSSE', () => {
         expect(result.current.isConnected).toBe(false);
         expect(result.current.isComplete).toBe(false);
     });
+
+    it('does not open a new EventSource when only the token query changes', async () => {
+        const { rerender } = renderHook(
+            ({ url }) => useSSE(url),
+            {
+                initialProps: {
+                    url: 'http://test/api/v1/generate/camp-1/stream?token=token-a',
+                },
+            },
+        );
+
+        expect(MockEventSource).toHaveBeenCalledTimes(1);
+
+        rerender({
+            url: 'http://test/api/v1/generate/camp-1/stream?token=token-b',
+        });
+
+        expect(MockEventSource).toHaveBeenCalledTimes(1);
+    });
 });

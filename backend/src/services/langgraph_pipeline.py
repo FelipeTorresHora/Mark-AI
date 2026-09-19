@@ -263,3 +263,23 @@ async def resume_after_human(
 
 def new_thread_id() -> str:
     return uuid.uuid4().hex
+
+
+def _graph_config(thread_id: str) -> dict:
+    return {"configurable": {"thread_id": thread_id}}
+
+
+def get_review_interrupt_contents(thread_id: str) -> dict[str, str] | None:
+    """Return platform contents when the graph is paused at human review, else None."""
+    app = _build_graph(None)
+    snap = app.get_state(_graph_config(thread_id))
+    if not snap.interrupts:
+        return None
+    contents = (snap.values or {}).get("platform_contents") or {}
+    return dict(contents) if contents else None
+
+
+def graph_checkpoint_exists(thread_id: str) -> bool:
+    app = _build_graph(None)
+    snap = app.get_state(_graph_config(thread_id))
+    return bool(snap.values or snap.next or snap.interrupts)

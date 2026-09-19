@@ -1,6 +1,11 @@
 import asyncio
 
-from src.services.langgraph_pipeline import new_thread_id, resume_after_human, run_until_review
+from src.services.langgraph_pipeline import (
+    get_review_interrupt_contents,
+    new_thread_id,
+    resume_after_human,
+    run_until_review,
+)
 
 
 def test_graph_interrupts_for_human_review(monkeypatch):
@@ -75,6 +80,38 @@ def test_graph_continues_after_platform_timeout(monkeypatch):
     state = asyncio.run(run())
     assert "X" in state.get("platform_contents", {})
     assert "INSTAGRAM" not in state.get("platform_contents", {})
+
+
+def test_get_review_interrupt_contents_after_run(monkeypatch):
+    async def fake_generate_post(platform, objective, brand_context, **kwargs):
+        return f"Post {platform}"
+
+    monkeypatch.setattr("src.services.langgraph_pipeline.generate_post", fake_generate_post)
+
+    thread_id = new_thread_id()
+
+    async def run():
+        await run_until_review(
+            thread_id=thread_id,
+            objective="Objetivo",
+            brand_context={
+                "name": "M",
+                "niche": "N",
+                "tone": "T",
+                "target_audience": "A",
+                "unique_value": "U",
+            },
+            platforms=["X"],
+            platform_post_ids={"X": "p1"},
+            audience=None,
+            user_id=None,
+            campaign_id=None,
+            emitter=None,
+        )
+
+    asyncio.run(run())
+    contents = get_review_interrupt_contents(thread_id)
+    assert contents == {"X": "Post X"}
 
 
 def test_graph_resume_approve_completes(monkeypatch):
