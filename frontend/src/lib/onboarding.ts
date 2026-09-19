@@ -1,6 +1,20 @@
+import type { AudienceType } from '../data/goalsCopy';
+
 export type ProductAudience = 'mei' | 'founder' | 'faceless';
 
 export type OnboardingStep = 'audience' | 'accounts' | 'goals';
+
+/** Maps onboarding UI ids to the API / user.audience enum. */
+export function productAudienceToApi(audience: ProductAudience): AudienceType {
+    if (audience === 'mei') return 'mei_loja_liberal';
+    return audience;
+}
+
+export function productAudienceFromApi(raw: string | null | undefined): ProductAudience | null {
+    if (raw === 'mei_loja_liberal' || raw === 'mei') return 'mei';
+    if (raw === 'founder' || raw === 'faceless') return raw;
+    return null;
+}
 
 export interface OnboardingState {
     completed: boolean;
@@ -9,6 +23,7 @@ export interface OnboardingState {
 }
 
 const STORAGE_KEY = 'mark_onboarding_v1';
+const PENDING_AUDIENCE_KEY = 'mark_onboarding_pending_audience';
 
 export const AUDIENCE_OPTIONS: {
     id: ProductAudience;
@@ -81,6 +96,45 @@ function writeAll(data: Record<string, OnboardingState>) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
+export function getPendingAudience(): ProductAudience | null {
+    try {
+        const raw = sessionStorage.getItem(PENDING_AUDIENCE_KEY);
+        if (raw === 'mei' || raw === 'founder' || raw === 'faceless') return raw;
+    } catch {
+        /* ignore */
+    }
+    return null;
+}
+
+export function setPendingAudience(audience: ProductAudience) {
+    try {
+        sessionStorage.setItem(PENDING_AUDIENCE_KEY, audience);
+    } catch {
+        /* ignore */
+    }
+}
+
+export function clearPendingAudience() {
+    try {
+        sessionStorage.removeItem(PENDING_AUDIENCE_KEY);
+    } catch {
+        /* ignore */
+    }
+}
+
+/** Audience for the current onboarding session (localStorage per user + session fallback). */
+export function resolveOnboardingAudience(
+    userId: string | undefined,
+    localAudience: ProductAudience | null,
+): ProductAudience | null {
+    if (localAudience) return localAudience;
+    if (userId) {
+        const stored = getOnboardingState(userId).audience;
+        if (stored) return stored;
+    }
+    return getPendingAudience();
+}
+
 export function getOnboardingState(userId: string | undefined): OnboardingState {
     if (!userId) {
         return { completed: false, audience: null };
@@ -97,6 +151,22 @@ export function saveOnboardingAudience(userId: string, audience: ProductAudience
     const current = all[userId] ?? { completed: false, audience: null };
     all[userId] = { ...current, audience };
     writeAll(all);
+    clearPendingAudience();
+}
+
+/** Flush session-only audience into per-user storage once auth user id is known. */
+export function flushPendingAudienceForUser(userId: string): ProductAudience | null {
+    const pending = getPendingAudience();
+    const stored = getOnboardingState(userId).audience;
+    if (stored) {
+        clearPendingAudience();
+        return stored;
+    }
+    if (pending) {
+        saveOnboardingAudience(userId, pending);
+        return pending;
+    }
+    return null;
 }
 
 export function completeOnboarding(userId: string) {

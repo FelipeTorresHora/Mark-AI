@@ -1,19 +1,24 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Target } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import {
     AUDIENCE_OPTIONS,
     completeOnboarding,
+    flushPendingAudienceForUser,
     getGoalsForAudience,
     getOnboardingState,
+    productAudienceToApi,
+    resolveOnboardingAudience,
     saveOnboardingAudience,
     setOAuthReturnToOnboarding,
+    setPendingAudience,
     type OnboardingStep,
     type ProductAudience,
 } from '../lib/onboarding';
 import { SocialConnectList } from '../components/social/SocialConnectList';
 import { useHasConnectedSocialAccount } from '../hooks/useHasConnectedSocialAccount';
+import { useUpdateGoalsAudience } from '../hooks/useGoals';
 import { cn } from '../lib/utils';
 
 const STEPS: { id: OnboardingStep; label: string }[] = [
@@ -32,10 +37,25 @@ export function OnboardingPage() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const stored = getOnboardingState(userId);
-    const [audience, setAudience] = useState<ProductAudience | null>(stored.audience);
+    const [audience, setAudience] = useState<ProductAudience | null>(() =>
+        resolveOnboardingAudience(userId, stored.audience),
+    );
     const step = parseStep(searchParams.get('step'));
     const hasConnectedAccount = useHasConnectedSocialAccount();
-    const activeAudience = audience ?? stored.audience;
+    const { mutate: syncAudienceToBackend } = useUpdateGoalsAudience();
+    const activeAudience = resolveOnboardingAudience(userId, audience);
+
+    useEffect(() => {
+        if (!userId) return;
+        const flushed = flushPendingAudienceForUser(userId);
+        if (flushed) {
+            setAudience(flushed);
+            syncAudienceToBackend(productAudienceToApi(flushed));
+            return;
+        }
+        const resolved = getOnboardingState(userId).audience;
+        if (resolved) setAudience(resolved);
+    }, [userId, syncAudienceToBackend]);
 
     const stepIndex = STEPS.findIndex((s) => s.id === step);
 
@@ -49,9 +69,12 @@ export function OnboardingPage() {
     }
 
     function handleSelectAudience(id: ProductAudience) {
-        if (!userId) return;
         setAudience(id);
-        saveOnboardingAudience(userId, id);
+        setPendingAudience(id);
+        if (userId) {
+            saveOnboardingAudience(userId, id);
+            syncAudienceToBackend(productAudienceToApi(id));
+        }
         goToStep('accounts');
     }
 

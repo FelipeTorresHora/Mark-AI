@@ -56,6 +56,17 @@ def test_publish_3_in_7_days_tracks_progress(
     assert goal["completed"] is False
 
 
+def test_update_audience_accepts_mei_alias(client, user_factory, auth_headers):
+    user = user_factory()
+    response = client.patch(
+        "/api/v1/goals/audience",
+        headers=auth_headers(user),
+        json={"audience": "mei"},
+    )
+    assert response.status_code == 200
+    assert response.json()["audience"] == "mei_loja_liberal"
+
+
 def test_update_audience_changes_featured_goals(client, user_factory, auth_headers):
     user = user_factory()
     response = client.patch(
