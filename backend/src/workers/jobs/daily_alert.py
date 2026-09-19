@@ -41,7 +41,12 @@ def _build_posts_rows(posts: list[Post]) -> str:
     rows = []
     for post in posts:
         platform = post.platform or ""
-        badge_class = "badge-x" if platform == "X" else "badge-linkedin"
+        if platform == "X":
+            badge_class = "badge-x"
+        elif platform == "INSTAGRAM":
+            badge_class = "badge-instagram"
+        else:
+            badge_class = "badge-linkedin"
         scheduled_str = (
             post.scheduled_at.strftime("%H:%M") if post.scheduled_at else "—"
         )

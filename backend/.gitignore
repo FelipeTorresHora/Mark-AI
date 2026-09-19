@@ -2,3 +2,5 @@
 CLAUDE.md
 venv/
 .pytest_cache/
+.coverage
+htmlcov/

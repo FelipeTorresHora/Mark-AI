@@ -1,6 +1,16 @@
 from datetime import datetime
 from uuid import uuid4
+
+import pytest
+from pydantic import ValidationError
+
+from src.schemas.auth import RegisterRequest
 from src.schemas.post import PostResponse
+
+
+def test_register_request_password_min_length():
+    with pytest.raises(ValidationError):
+        RegisterRequest(email="a@b.com", password="short")
 
 def test_post_response_validation():
     post_data = {
