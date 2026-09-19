@@ -10,7 +10,7 @@ def test_get_goals_seeds_rows_and_returns_audience_copy(client, user_factory, au
     assert response.status_code == 200
     payload = response.json()
     assert payload["audience"] == "mei_loja_liberal"
-    assert payload["total_count"] == 6
+    assert payload["total_count"] == 7
     assert any(goal["key"] == "connect_account" and goal["featured"] for goal in payload["goals"])
     first_gen = next(g for g in payload["goals"] if g["key"] == "first_generation")
     assert "objetivo" not in first_gen["title"].lower()
@@ -67,6 +67,20 @@ def test_update_audience_accepts_mei_alias(client, user_factory, auth_headers):
     )
     assert response.status_code == 200
     assert response.json()["audience"] == "mei_loja_liberal"
+
+
+def test_define_objective_goal_completes_with_primary_objective(client, user_factory, auth_headers):
+    user = user_factory()
+    response = client.patch(
+        "/api/v1/goals/objective",
+        headers=auth_headers(user),
+        json={"objective": "Abrir agenda da clínica com posts que gerem confiança local"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["primary_objective"].startswith("Abrir agenda")
+    define_goal = next(g for g in payload["goals"] if g["key"] == "define_objective")
+    assert define_goal["completed"] is True
 
 
 def test_update_audience_changes_featured_goals(client, user_factory, auth_headers):

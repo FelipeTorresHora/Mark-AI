@@ -34,6 +34,7 @@ class UserResponse(BaseModel):
     is_active: bool
     timezone: str
     audience: str = "mei_loja_liberal"
+    primary_objective: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

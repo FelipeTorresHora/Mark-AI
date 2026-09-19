@@ -16,6 +16,7 @@ export interface GoalItem {
 
 export interface GoalsPayload {
     audience: AudienceType;
+    primary_objective: string | null;
     goals: GoalItem[];
     completed_count: number;
     total_count: number;
@@ -36,6 +37,19 @@ export function useUpdateGoalsAudience() {
     return useMutation({
         mutationFn: async (audience: AudienceType) => {
             const res = await api.patch('/api/v1/goals/audience', { audience });
+            return res.data as GoalsPayload;
+        },
+        onSuccess: (data) => {
+            queryClient.setQueryData(['goals'], data);
+        },
+    });
+}
+
+export function useUpdatePrimaryObjective() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (objective: string) => {
+            const res = await api.patch('/api/v1/goals/objective', { objective });
             return res.data as GoalsPayload;
         },
         onSuccess: (data) => {

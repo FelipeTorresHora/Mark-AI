@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, DateTime, func
+from sqlalchemy import Column, String, Boolean, DateTime, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from src.database import Base
 
@@ -13,5 +13,6 @@ class User(Base):
     is_active = Column(Boolean, nullable=False, default=True)
     timezone = Column(String(64), nullable=False, default="America/Sao_Paulo")
     audience = Column(String(32), nullable=False, default="mei_loja_liberal")
+    primary_objective = Column(Text, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)

@@ -7,6 +7,7 @@ import { Card } from '../common/Card';
 import { api } from '../../lib/api';
 import { isNotFoundError } from '../../lib/utils';
 import { useStartCampaign, type BrandProfileSnapshot } from '../../hooks/useStartCampaign';
+import { useGoals } from '../../hooks/useGoals';
 import type { PostsPerPlatform } from '../../types';
 
 const OBJECTIVE_EXAMPLES = [
@@ -32,6 +33,8 @@ export function ObjectiveComposer({ initialObjective = '' }: ObjectiveComposerPr
         ...DEFAULT_POSTS_PER_PLATFORM,
     });
     const { startCampaign, isStarting } = useStartCampaign();
+    const { data: goalsData } = useGoals();
+    const brandObjective = goalsData?.primary_objective?.trim() ?? '';
 
     const { data: profile, isLoading: profileLoading } = useQuery({
         queryKey: ['brand-profile'],
@@ -57,7 +60,8 @@ export function ObjectiveComposer({ initialObjective = '' }: ObjectiveComposerPr
     function handleSubmit() {
         if (!profile || !canStart) return;
         startCampaign({
-            objective,
+            campaignFocus: objective,
+            brandObjective: brandObjective || undefined,
             brandContext: profile,
             postsPerPlatform,
         });
@@ -101,6 +105,18 @@ export function ObjectiveComposer({ initialObjective = '' }: ObjectiveComposerPr
                             antes de gerar conteúdo.
                         </p>
                     </div>
+                </Card>
+            )}
+
+            {brandObjective && (
+                <Card className="p-5 app-panel-subtle mb-6 rounded-[24px] border border-[rgba(22,51,0,0.12)]">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] app-text-soft mb-1">
+                        Objetivo de marca
+                    </p>
+                    <p className="text-sm app-text-secondary leading-relaxed">{brandObjective}</p>
+                    <p className="text-xs app-text-muted mt-2">
+                        Abaixo, descreva o foco desta campanha — pode ser mais específico que sua meta principal.
+                    </p>
                 </Card>
             )}
 

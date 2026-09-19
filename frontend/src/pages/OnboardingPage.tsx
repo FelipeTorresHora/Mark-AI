@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Target } from 'lucide-react';
+import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import {
     AUDIENCE_OPTIONS,
@@ -17,18 +17,21 @@ import {
     type ProductAudience,
 } from '../lib/onboarding';
 import { SocialConnectList } from '../components/social/SocialConnectList';
+import { OnboardingObjectiveStep } from '../components/onboarding/OnboardingObjectiveStep';
 import { useHasConnectedSocialAccount } from '../hooks/useHasConnectedSocialAccount';
-import { useUpdateGoalsAudience } from '../hooks/useGoals';
+import { useGoals, useUpdateGoalsAudience, useUpdatePrimaryObjective } from '../hooks/useGoals';
+import { toast } from '../lib/toast';
 import { cn } from '../lib/utils';
 
 const STEPS: { id: OnboardingStep; label: string }[] = [
     { id: 'audience', label: 'Público' },
     { id: 'accounts', label: 'Contas' },
     { id: 'goals', label: 'Metas' },
+    { id: 'objective', label: 'Meta da marca' },
 ];
 
 function parseStep(value: string | null): OnboardingStep {
-    if (value === 'accounts' || value === 'goals') return value;
+    if (value === 'accounts' || value === 'goals' || value === 'objective') return value;
     return 'audience';
 }
 
@@ -43,6 +46,8 @@ export function OnboardingPage() {
     const step = parseStep(searchParams.get('step'));
     const hasConnectedAccount = useHasConnectedSocialAccount();
     const { mutate: syncAudienceToBackend } = useUpdateGoalsAudience();
+    const { data: goalsData } = useGoals();
+    const savePrimaryObjective = useUpdatePrimaryObjective();
     const activeAudience = resolveOnboardingAudience(userId, audience);
     const hydratedForUserRef = useRef<string | null>(null);
 
@@ -62,6 +67,8 @@ export function OnboardingPage() {
         return getGoalsForAudience(activeAudience, hasConnectedAccount);
     }, [activeAudience, hasConnectedAccount]);
 
+    const hasPrimaryObjective = Boolean(goalsData?.primary_objective?.trim());
+
     function goToStep(next: OnboardingStep) {
         setSearchParams({ step: next }, { replace: true });
     }
@@ -76,8 +83,14 @@ export function OnboardingPage() {
         goToStep('accounts');
     }
 
-    function handleFinishOnboarding() {
+    async function handleSaveObjective(objective: string) {
         if (!userId) return;
+        try {
+            await savePrimaryObjective.mutateAsync(objective);
+        } catch {
+            toast.error('Não foi possível salvar sua meta da marca. Tente novamente.');
+            return;
+        }
         completeOnboarding(userId);
         navigate('/objetivo', { replace: true });
     }
@@ -97,7 +110,8 @@ export function OnboardingPage() {
                     Vamos configurar sua presença digital
                 </h1>
                 <p className="app-text-secondary font-semibold mt-4 text-base max-w-xl">
-                    Em poucos passos você escolhe seu perfil, conecta as contas que já tem e vê as metas iniciais.
+                    Escolha seu perfil, conecte as contas que já tem, veja as metas de hábito e defina a meta da marca.
+                    O objetivo de cada campanha vem depois, na geração.
                 </p>
 
                 <ol className="flex flex-wrap gap-2 mt-8" aria-label="Progresso do onboarding">
@@ -161,10 +175,7 @@ export function OnboardingPage() {
                         <p className="text-sm app-text-muted mb-6">
                             OAuth seguro — o Mark só publica o que você aprovar. Você pode conectar depois, se preferir.
                         </p>
-                        <SocialConnectList
-                            variant="onboarding"
-                            onBeforeConnect={setOAuthReturnToOnboarding}
-                        />
+                        <SocialConnectList variant="onboarding" onBeforeConnect={setOAuthReturnToOnboarding} />
                         <div className="flex flex-wrap gap-3 mt-8">
                             <button
                                 type="button"
@@ -191,15 +202,17 @@ export function OnboardingPage() {
                             Suas primeiras metas
                         </h2>
                         <p className="text-sm app-text-muted mb-6">
-                            Metas sugeridas para{' '}
+                            Metas de hábito para{' '}
                             <span className="font-semibold app-text-secondary">
                                 {AUDIENCE_OPTIONS.find((a) => a.id === activeAudience)?.title}
                             </span>
-                            . Vamos acompanhá-las no dashboard.
+                            . O objetivo de cada campanha fica na geração, separado da meta da marca.
                         </p>
                         <ul className="space-y-3 mb-8">
                             {goals.map((goal, index) => {
-                                const done = goal.id === 'connect' && hasConnectedAccount;
+                                const done =
+                                    (goal.id === 'connect' && hasConnectedAccount) ||
+                                    (goal.id === 'objective' && hasPrimaryObjective);
                                 return (
                                     <li
                                         key={goal.id}
@@ -225,38 +238,34 @@ export function OnboardingPage() {
                                 );
                             })}
                         </ul>
-                        <div className="app-panel rounded-[30px] p-6 border border-primary-300/60 dark:border-primary-700/60">
-                            <div className="flex items-start gap-4">
-                                <div className="h-12 w-12 rounded-full bg-primary-400 flex items-center justify-center shrink-0">
-                                    <Target className="text-primary-900" size={22} />
-                                </div>
-                                <div className="flex-1">
-                                    <h3 className="text-lg font-black app-text" style={{ lineHeight: 1.1 }}>
-                                        Próximo passo: objetivo da campanha
-                                    </h3>
-                                    <p className="text-sm app-text-secondary mt-2 leading-relaxed">
-                                        As metas acima acompanham seu hábito. Na tela Objetivo você descreve o que quer
-                                        alcançar nesta rodada — agenda, lançamento, crescimento — e a IA gera os posts.
-                                    </p>
-                                    <button
-                                        type="button"
-                                        onClick={handleFinishOnboarding}
-                                        className="mt-5 py-3 px-8 bg-primary-400 hover:scale-105 active:scale-95 text-primary-900 font-semibold rounded-full text-sm transition-all duration-150 inline-flex items-center gap-2"
-                                    >
-                                        Ir para Objetivo
-                                        <ArrowRight size={16} />
-                                    </button>
-                                </div>
-                            </div>
+                        <div className="flex flex-wrap gap-3">
+                            <button
+                                type="button"
+                                onClick={() => goToStep('accounts')}
+                                className="py-2.5 px-5 rounded-full text-sm font-semibold app-text-secondary hover:bg-primary-50 dark:hover:bg-white/5 transition-all"
+                            >
+                                Voltar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => goToStep('objective')}
+                                className="py-2.5 px-6 bg-primary-400 hover:scale-105 active:scale-95 text-primary-900 font-semibold rounded-full text-sm transition-all duration-150 flex items-center gap-2 ml-auto"
+                            >
+                                Definir meta da marca
+                                <ArrowRight size={16} />
+                            </button>
                         </div>
-                        <button
-                            type="button"
-                            onClick={() => goToStep('accounts')}
-                            className="mt-6 py-2 text-sm font-semibold app-text-soft hover:underline"
-                        >
-                            Voltar para contas
-                        </button>
                     </section>
+                )}
+
+                {step === 'objective' && activeAudience && (
+                    <OnboardingObjectiveStep
+                        audience={activeAudience}
+                        initialValue={goalsData?.primary_objective ?? ''}
+                        isSaving={savePrimaryObjective.isPending}
+                        onBack={() => goToStep('goals')}
+                        onSave={handleSaveObjective}
+                    />
                 )}
 
                 {step !== 'audience' && !activeAudience && (

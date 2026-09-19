@@ -6,6 +6,7 @@ import {
     getOnboardingState,
     getPendingAudience,
     isOnboardingComplete,
+    MIN_PRIMARY_OBJECTIVE_LENGTH,
     productAudienceFromApi,
     productAudienceToApi,
     resolveOnboardingAudience,
@@ -31,7 +32,8 @@ describe('onboarding storage', () => {
     it('returns audience-specific goals', () => {
         const goals = getGoalsForAudience('faceless', false);
         expect(goals.some((g) => g.label.includes('faceless'))).toBe(true);
-        expect(goals.some((g) => g.label.toLowerCase().includes('objetivo'))).toBe(false);
+        expect(goals.some((g) => g.id === 'objective')).toBe(true);
+        expect(goals.some((g) => g.label.toLowerCase().includes('campanha'))).toBe(false);
     });
 
     it('maps product audience to API enum', () => {
@@ -48,5 +50,9 @@ describe('onboarding storage', () => {
         expect(flushed).toBe('founder');
         expect(getOnboardingState('user-2').audience).toBe('founder');
         expect(getPendingAudience()).toBeNull();
+    });
+
+    it('requires minimum length for primary objective', () => {
+        expect(MIN_PRIMARY_OBJECTIVE_LENGTH).toBeGreaterThanOrEqual(20);
     });
 });

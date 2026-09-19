@@ -2,7 +2,24 @@ import type { AudienceType } from '../data/goalsCopy';
 
 export type ProductAudience = 'mei' | 'founder' | 'faceless';
 
-export type OnboardingStep = 'audience' | 'accounts' | 'goals';
+export type OnboardingStep = 'audience' | 'accounts' | 'goals' | 'objective';
+
+export const MIN_PRIMARY_OBJECTIVE_LENGTH = 20;
+
+export const PRIMARY_OBJECTIVE_EXAMPLES: Record<ProductAudience, string[]> = {
+    mei: [
+        'Lotar a agenda da clínica com posts que gerem confiança local',
+        'Atrair clientes na região mostrando ofertas e depoimentos reais',
+    ],
+    founder: [
+        'Lançar uma feature e explicar o valor em linguagem simples',
+        'Construir autoridade no LinkedIn para atrair early adopters',
+    ],
+    faceless: [
+        'Crescer no Instagram sem aparecer — só valor e consistência',
+        'Educar o público sobre o nicho com posts anônimos e úteis',
+    ],
+};
 
 /** Maps onboarding UI ids to the API / user.audience enum. */
 export function productAudienceToApi(audience: ProductAudience): AudienceType {
@@ -62,18 +79,21 @@ export function getGoalsForAudience(audience: ProductAudience, hasConnectedAccou
     const shared: Record<ProductAudience, OnboardingGoal[]> = {
         mei: [
             { id: 'connect', label: connectLabel, hint: hasConnectedAccount ? 'Concluído' : 'Próximo passo' },
+            { id: 'objective', label: 'Definir meta da marca', hint: 'Resultado duradouro — não o tópico da campanha' },
             { id: 'first_generation', label: 'Primeira rodada de geração', hint: 'Hábito no painel de metas' },
             { id: 'first_post', label: 'Aprovar o primeiro post' },
             { id: 'week_posts', label: 'Publicar 3 posts em 7 dias' },
         ],
         founder: [
             { id: 'connect', label: connectLabel, hint: hasConnectedAccount ? 'Concluído' : 'Próximo passo' },
+            { id: 'objective', label: 'Definir meta da marca', hint: 'Ex.: lançar feature ou MRR' },
             { id: 'first_generation', label: 'Primeira rodada de geração', hint: 'Hábito no painel de metas' },
             { id: 'first_post', label: 'Aprovar o primeiro post' },
             { id: 'two_channels', label: 'Estar em 2 canais conectados' },
         ],
         faceless: [
             { id: 'connect', label: connectLabel, hint: hasConnectedAccount ? 'Concluído' : 'Próximo passo' },
+            { id: 'objective', label: 'Definir meta da marca', hint: 'Ex.: crescer sem aparecer' },
             { id: 'first_generation', label: 'Primeira rodada de geração', hint: 'Hábito no painel de metas' },
             { id: 'first_faceless', label: 'Aprovar o primeiro post faceless' },
             { id: 'consistency', label: '7 dias de consistência' },

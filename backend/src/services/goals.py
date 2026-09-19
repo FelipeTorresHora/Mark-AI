@@ -18,6 +18,7 @@ AudienceType = Literal["mei_loja_liberal", "founder", "faceless"]
 
 ALL_GOAL_KEYS: tuple[str, ...] = (
     "connect_account",
+    "define_objective",
     "first_generation",
     "approve_first_post",
     "publish_3_in_7_days",
@@ -36,6 +37,10 @@ GOAL_COPY: dict[AudienceType, dict[str, dict[str, str]]] = {
         "connect_account": {
             "title": "Conectar sua primeira conta",
             "description": "Vincule X ou LinkedIn para publicar sem sair do Mark.",
+        },
+        "define_objective": {
+            "title": "Definir meta da marca",
+            "description": "Descreva o resultado que quer com a marca — antes de criar campanhas.",
         },
         "first_generation": {
             "title": "Primeira rodada de geração",
@@ -63,6 +68,10 @@ GOAL_COPY: dict[AudienceType, dict[str, dict[str, str]]] = {
             "title": "Conectar sua primeira conta",
             "description": "Conecte X ou LinkedIn para distribuir narrativa de produto.",
         },
+        "define_objective": {
+            "title": "Definir meta da marca",
+            "description": "Registre a meta de tração ou autoridade que guia seu conteúdo.",
+        },
         "first_generation": {
             "title": "Primeira rodada de geração",
             "description": "Dispare sua primeira leva de posts gerados e mantenha o momentum.",
@@ -89,6 +98,10 @@ GOAL_COPY: dict[AudienceType, dict[str, dict[str, str]]] = {
             "title": "Conectar sua primeira conta",
             "description": "Conecte uma rede para publicar sem mostrar o rosto.",
         },
+        "define_objective": {
+            "title": "Definir meta da marca",
+            "description": "Defina o que a marca deve alcançar — independente do tópico de cada post.",
+        },
         "first_generation": {
             "title": "Primeira rodada de geração",
             "description": "Gere sua primeira leva de conteúdo e construa o hábito de publicar.",
@@ -114,10 +127,13 @@ GOAL_COPY: dict[AudienceType, dict[str, dict[str, str]]] = {
 
 APPROVED_STATUSES = frozenset({"APPROVED", "FINAL", "PUBLISHED"})
 
+MIN_PRIMARY_OBJECTIVE_LEN = 20
+
 
 @dataclass
 class GoalMetrics:
     connected_accounts: int
+    has_primary_objective: bool
     campaign_count: int
     approved_posts: int
     published_last_7_days: int
@@ -125,10 +141,10 @@ class GoalMetrics:
     publish_days_last_7: int
 
 
-def _normalize_goal_key(goal_key: str) -> str:
-    if goal_key == "define_objective":
-        return "first_generation"
-    return goal_key
+def _known_goal_key(goal_key: str) -> str | None:
+    if goal_key in ALL_GOAL_KEYS:
+        return goal_key
+    return None
 
 
 def normalize_audience(raw: str | None) -> AudienceType:
@@ -179,17 +195,20 @@ def _count_connected_platforms(db: Session, user_id) -> int:
     return len(platforms)
 
 
-def collect_goal_metrics(db: Session, user_id) -> GoalMetrics:
+def collect_goal_metrics(db: Session, user: User) -> GoalMetrics:
     now = datetime.now(UTC).replace(tzinfo=None)
     week_ago = now - timedelta(days=7)
 
+    primary = (user.primary_objective or "").strip()
+    has_primary_objective = len(primary) >= MIN_PRIMARY_OBJECTIVE_LEN
+
     campaign_count = (
-        db.query(func.count(Campaign.id)).filter(Campaign.user_id == user_id).scalar() or 0
+        db.query(func.count(Campaign.id)).filter(Campaign.user_id == user.id).scalar() or 0
     )
 
     approved_posts = (
         db.query(func.count(Post.id))
-        .filter(Post.user_id == user_id, Post.status.in_(APPROVED_STATUSES))
+        .filter(Post.user_id == user.id, Post.status.in_(APPROVED_STATUSES))
         .scalar()
         or 0
     )
@@ -197,7 +216,7 @@ def collect_goal_metrics(db: Session, user_id) -> GoalMetrics:
     published_last_7_days = (
         db.query(func.count(Post.id))
         .filter(
-            Post.user_id == user_id,
+            Post.user_id == user.id,
             Post.status == "PUBLISHED",
             Post.published_at.isnot(None),
             Post.published_at >= week_ago,
@@ -209,7 +228,7 @@ def collect_goal_metrics(db: Session, user_id) -> GoalMetrics:
     publish_days_last_7 = (
         db.query(func.count(func.distinct(func.date(Post.published_at))))
         .filter(
-            Post.user_id == user_id,
+            Post.user_id == user.id,
             Post.status == "PUBLISHED",
             Post.published_at.isnot(None),
             Post.published_at >= week_ago,
@@ -219,11 +238,12 @@ def collect_goal_metrics(db: Session, user_id) -> GoalMetrics:
     )
 
     return GoalMetrics(
-        connected_accounts=_count_connected_accounts(db, user_id),
+        connected_accounts=_count_connected_accounts(db, user.id),
+        has_primary_objective=has_primary_objective,
         campaign_count=int(campaign_count),
         approved_posts=int(approved_posts),
         published_last_7_days=int(published_last_7_days),
-        connected_platforms=_count_connected_platforms(db, user_id),
+        connected_platforms=_count_connected_platforms(db, user.id),
         publish_days_last_7=int(publish_days_last_7),
     )
 
@@ -231,7 +251,9 @@ def collect_goal_metrics(db: Session, user_id) -> GoalMetrics:
 def _goal_progress(goal_key: str, metrics: GoalMetrics, audience: AudienceType) -> tuple[int, int, bool]:
     if goal_key == "connect_account":
         current, target = metrics.connected_accounts, 1
-    elif goal_key in ("first_generation", "define_objective"):
+    elif goal_key == "define_objective":
+        current, target = (1 if metrics.has_primary_objective else 0), 1
+    elif goal_key == "first_generation":
         current, target = metrics.campaign_count, 1
     elif goal_key == "approve_first_post":
         current, target = min(metrics.approved_posts, 1), 1
@@ -251,7 +273,7 @@ def _goal_progress(goal_key: str, metrics: GoalMetrics, audience: AudienceType) 
 
 def sync_goal_completions(db: Session, user: User) -> list[UserGoal]:
     audience = normalize_audience(user.audience)
-    metrics = collect_goal_metrics(db, user.id)
+    metrics = collect_goal_metrics(db, user)
     rows = ensure_user_goals(db, user.id)
     now = datetime.now(UTC).replace(tzinfo=None)
 
@@ -270,15 +292,16 @@ def sync_goal_completions(db: Session, user: User) -> list[UserGoal]:
 
 def build_goals_payload(db: Session, user: User) -> dict:
     audience = normalize_audience(user.audience)
-    metrics = collect_goal_metrics(db, user.id)
+    metrics = collect_goal_metrics(db, user)
     rows = sync_goal_completions(db, user)
     copy = GOAL_COPY[audience]
     featured = set(FEATURED_BY_AUDIENCE[audience])
 
     goals = []
     completed_count = 0
-    for row in sorted(rows, key=lambda r: ALL_GOAL_KEYS.index(_normalize_goal_key(r.goal_key))):
-        goal_key = _normalize_goal_key(row.goal_key)
+    known_rows = [row for row in rows if _known_goal_key(row.goal_key)]
+    for row in sorted(known_rows, key=lambda r: ALL_GOAL_KEYS.index(r.goal_key)):
+        goal_key = row.goal_key
         current, target, completed = _goal_progress(row.goal_key, metrics, audience)
         if completed:
             completed_count += 1
@@ -298,9 +321,20 @@ def build_goals_payload(db: Session, user: User) -> dict:
             }
         )
 
+    primary = (user.primary_objective or "").strip() or None
+
     return {
         "audience": audience,
+        "primary_objective": primary,
         "goals": goals,
         "completed_count": completed_count,
         "total_count": len(goals),
     }
+
+
+def update_primary_objective(db: Session, user: User, objective: str) -> User:
+    user.primary_objective = objective.strip()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user

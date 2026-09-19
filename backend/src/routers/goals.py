@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from src.database import get_db
 from src.dependencies.auth import get_current_user
 from src.models.user import User
-from src.schemas.goals import GoalsResponse, UpdateAudienceRequest
-from src.services.goals import build_goals_payload, normalize_audience
+from src.schemas.goals import GoalsResponse, UpdateAudienceRequest, UpdatePrimaryObjectiveRequest
+from src.services.goals import build_goals_payload, normalize_audience, update_primary_objective
 
 router = APIRouter(prefix="/goals", tags=["goals"])
 
@@ -28,4 +28,14 @@ def update_audience(
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
+    return build_goals_payload(db, current_user)
+
+
+@router.patch("/objective", response_model=GoalsResponse)
+def set_primary_objective(
+    body: UpdatePrimaryObjectiveRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    update_primary_objective(db, current_user, body.objective)
     return build_goals_payload(db, current_user)
