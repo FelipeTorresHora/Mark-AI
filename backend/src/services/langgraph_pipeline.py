@@ -84,15 +84,20 @@ async def _generate_one_platform(
             {"post_id": post_id, "variant_index": 1, "platform_total": 1},
         )
     try:
-        content = await generate_post(
-            platform,
-            state["objective"],
-            state["brand_context"],
-            audience=state.get("audience"),
-            user_id=state.get("user_id"),
-            campaign_id=state.get("campaign_id"),
-            attempt=state.get("attempt") or 1,
-            redo_feedback=state.get("redo_feedback") if state.get("redo_platform") == platform else None,
+        content = await asyncio.wait_for(
+            generate_post(
+                platform,
+                state["objective"],
+                state["brand_context"],
+                audience=state.get("audience"),
+                user_id=state.get("user_id"),
+                campaign_id=state.get("campaign_id"),
+                attempt=state.get("attempt") or 1,
+                redo_feedback=state.get("redo_feedback")
+                if state.get("redo_platform") == platform
+                else None,
+            ),
+            timeout=settings.generation_timeout_seconds,
         )
         guarded, _ = brand_guard(platform, content, state.get("audience"))
         if emitter:
@@ -107,6 +112,20 @@ async def _generate_one_platform(
                 },
             )
         return platform, guarded
+    except asyncio.TimeoutError:
+        message = f"Tempo esgotado ({settings.generation_timeout_seconds}s) ao gerar para {platform}."
+        if emitter:
+            emitter(
+                "error",
+                platform,
+                {
+                    "post_id": post_id,
+                    "message": message,
+                    "variant_index": 1,
+                    "platform_total": 1,
+                },
+            )
+        return platform, ""
     except Exception as exc:
         if emitter:
             emitter(

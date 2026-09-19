@@ -6,7 +6,7 @@ import { api } from '../lib/api';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { cn } from '../lib/utils';
-import { CheckCircle, Loader2, XCircle, ArrowRight } from 'lucide-react';
+import { CheckCircle, Loader2, XCircle, ArrowRight, MinusCircle } from 'lucide-react';
 import type { Platform } from '../types';
 
 const PLATFORM_LABELS: Record<Platform, string> = {
@@ -15,22 +15,27 @@ const PLATFORM_LABELS: Record<Platform, string> = {
     INSTAGRAM: 'Instagram',
 };
 
-const PLATFORM_ORDER: Platform[] = ['X', 'LINKEDIN', 'INSTAGRAM'];
-
 function PlatformCard({
     platform,
     status,
     done,
     total,
     errors,
+    skipped,
 }: {
     platform: Platform;
     status: string;
     done: number;
     total: number;
     errors: number;
+    skipped: number;
 }) {
-    const progressText = total > 0 ? `${done}/${total} concluídos` : 'Aguardando lote';
+    const progressText =
+        status === 'skipped'
+            ? 'Ignorado nesta rodada'
+            : total > 0
+              ? `${done}/${total} concluídos`
+              : 'Preparando...';
 
     return (
         <Card className="p-5 flex flex-col items-center text-center flex-1">
@@ -38,6 +43,7 @@ function PlatformCard({
                 {status === 'writing' && <Loader2 size={24} className="animate-spin text-primary-600" />}
                 {status === 'done' && <CheckCircle size={24} className="text-emerald-500" />}
                 {status === 'error' && <XCircle size={24} className="text-rose-500" />}
+                {status === 'skipped' && <MinusCircle size={24} className="text-amber-500" />}
                 {status === 'idle' && <div className="w-5 h-5 rounded-full bg-[var(--app-text-soft)]/50" />}
             </div>
             <h3 className="font-bold app-text">{PLATFORM_LABELS[platform]}</h3>
@@ -45,16 +51,21 @@ function PlatformCard({
             {errors > 0 && (
                 <p className="text-xs text-rose-500 mt-1">{errors} com erro</p>
             )}
+            {skipped > 0 && status === 'skipped' && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Sem geração</p>
+            )}
             <p className={cn('text-xs font-semibold mt-2 px-3 py-1 rounded-full', {
                 'app-chip app-chip-neutral': status === 'idle',
                 'app-chip app-chip-info': status === 'writing',
                 'app-chip app-chip-success': status === 'done',
                 'app-chip app-chip-danger': status === 'error',
+                'app-chip bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300': status === 'skipped',
             })}>
-                {status === 'idle' && 'Aguardando'}
+                {status === 'idle' && 'Na fila'}
                 {status === 'writing' && 'Escrevendo...'}
                 {status === 'done' && 'Concluído ✓'}
                 {status === 'error' && 'Concluído com erro'}
+                {status === 'skipped' && 'Ignorado'}
             </p>
         </Card>
     );
@@ -70,7 +81,13 @@ export function GenerationPage() {
             ? `${api.defaults.baseURL}/api/v1/generate/${campaignId}/stream?token=${encodeURIComponent(accessToken)}`
             : null;
 
-    const { platformStatus, platformProgress, events, isComplete, isConnected, error } = useSSE(sseEndpoint);
+    const { platformStatus, platformProgress, activePlatforms, events, isComplete, isConnected, error } =
+        useSSE(sseEndpoint);
+
+    const platformsToShow =
+        activePlatforms.length > 0
+            ? activePlatforms
+            : (['X', 'LINKEDIN'] as Platform[]);
 
     useEffect(() => {
         if (isComplete) {
@@ -84,6 +101,12 @@ export function GenerationPage() {
         }
         if (e.event === 'writer_done') {
             return { key: i, text: `[${e.platform} ${e.data.variant_index}/${e.data.platform_total}] Post gerado com sucesso ✓` };
+        }
+        if (e.event === 'platform_skipped') {
+            return {
+                key: i,
+                text: `[${e.platform}] Ignorado: ${e.data.message}`,
+            };
         }
         if (e.event === 'generation_complete') {
             return { key: i, text: 'Geração concluída! Redirecionando...' };
@@ -124,7 +147,7 @@ export function GenerationPage() {
             </div>
 
             <div className="flex gap-4 w-full mb-8">
-                {PLATFORM_ORDER.map((platform) => (
+                {platformsToShow.map((platform) => (
                     <PlatformCard
                         key={platform}
                         platform={platform}
@@ -132,6 +155,7 @@ export function GenerationPage() {
                         done={platformProgress[platform].done}
                         total={platformProgress[platform].total}
                         errors={platformProgress[platform].errors}
+                        skipped={platformProgress[platform].skipped}
                     />
                 ))}
             </div>
