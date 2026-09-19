@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -10,14 +11,28 @@ from src.routers import generate, posts, campaigns, brand_profile, chat, x_posts
 from src.routers import auth as auth_router
 from src.routers import social as social_router
 from src.routers import x_integration as x_integration_router
-from src.workers import scheduler as email_scheduler
+
+
+def _email_scheduler_enabled() -> bool:
+    if os.environ.get("DISABLE_EMAIL_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        return False
+    # APScheduler does not survive Vercel serverless invocations; skip to speed cold starts.
+    if os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV"):
+        return False
+    return True
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    email_scheduler.start()
+    if _email_scheduler_enabled():
+        from src.workers import scheduler as email_scheduler
+
+        email_scheduler.start()
     yield
-    email_scheduler.stop()
+    if _email_scheduler_enabled():
+        from src.workers import scheduler as email_scheduler
+
+        email_scheduler.stop()
 
 
 app = FastAPI(title="Agência de Marketing IA API", version="1.0.0", lifespan=lifespan)

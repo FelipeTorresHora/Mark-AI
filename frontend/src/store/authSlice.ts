@@ -11,12 +11,15 @@ export interface AuthSlice {
     isAuthLoading: boolean;
     setAuth: (user: AuthUser, token: string) => void;
     clearAuth: () => void;
+    /** Marks initial session restore complete (success or failure). */
+    finishAuthBootstrap: () => void;
 }
 
 export const createAuthSlice: StateCreator<AuthSlice, [], [], AuthSlice> = (set) => ({
     user: null,
     accessToken: null,
-    isAuthLoading: true, // true until silentRefresh resolves on mount
+    isAuthLoading: true, // true until bootstrapAuthSession finishes on protected entry
     setAuth: (user, token) => set({ user, accessToken: token, isAuthLoading: false }),
     clearAuth: () => set({ user: null, accessToken: null, isAuthLoading: false }),
+    finishAuthBootstrap: () => set({ isAuthLoading: false }),
 });

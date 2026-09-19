@@ -36,8 +36,12 @@ describe('useAuth', () => {
     });
 
     it('login populates auth store', async () => {
-        mockApi.post.mockResolvedValueOnce({ data: { access_token: 'test-token' } });
-        mockApi.get.mockResolvedValueOnce({ data: { id: 'user-1', email: 'test@test.com' } });
+        mockApi.post.mockResolvedValueOnce({
+            data: {
+                access_token: 'test-token',
+                user: { id: 'user-1', email: 'test@test.com' },
+            },
+        });
 
         const { result } = renderHook(() => useAuth(), { wrapper: createWrapper() });
 
