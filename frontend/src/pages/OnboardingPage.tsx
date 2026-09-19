@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Target } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
@@ -38,23 +38,21 @@ export function OnboardingPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const stored = getOnboardingState(userId);
     const [audience, setAudience] = useState<ProductAudience | null>(() =>
-        resolveOnboardingAudience(userId, stored.audience),
+        resolveOnboardingAudience(userId, null),
     );
     const step = parseStep(searchParams.get('step'));
     const hasConnectedAccount = useHasConnectedSocialAccount();
     const { mutate: syncAudienceToBackend } = useUpdateGoalsAudience();
     const activeAudience = resolveOnboardingAudience(userId, audience);
+    const hydratedForUserRef = useRef<string | null>(null);
 
     useEffect(() => {
-        if (!userId) return;
+        if (!userId || hydratedForUserRef.current === userId) return;
+        hydratedForUserRef.current = userId;
         const flushed = flushPendingAudienceForUser(userId);
         if (flushed) {
-            setAudience(flushed);
             syncAudienceToBackend(productAudienceToApi(flushed));
-            return;
         }
-        const resolved = getOnboardingState(userId).audience;
-        if (resolved) setAudience(resolved);
     }, [userId, syncAudienceToBackend]);
 
     const stepIndex = STEPS.findIndex((s) => s.id === step);
@@ -142,7 +140,7 @@ export function OnboardingPage() {
                                     onClick={() => handleSelectAudience(option.id)}
                                     className={cn(
                                         'text-left p-6 rounded-[30px] border app-divider app-panel hover:border-primary-300 dark:hover:border-primary-700 transition-all hover:-translate-y-0.5 hover:scale-[1.01]',
-                                        audience === option.id && 'border-primary-400 ring-1 ring-primary-300',
+                                        activeAudience === option.id && 'border-primary-400 ring-1 ring-primary-300',
                                     )}
                                 >
                                     <p className="text-lg font-black app-text" style={{ lineHeight: 1.1 }}>
