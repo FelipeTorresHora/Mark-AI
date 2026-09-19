@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, model_validator
+from typing import Literal, Optional
 from uuid import UUID
 
 
@@ -18,6 +18,8 @@ class PostsPerPlatformInput(BaseModel):
 
 class GenerateRequest(BaseModel):
     topic: str
+    objective: Optional[str] = None
+    audience: Optional[Literal["mei", "founder", "faceless"]] = None
     brand_context: BrandContextInput
     posts_per_platform: PostsPerPlatformInput = Field(default_factory=PostsPerPlatformInput)
 
@@ -26,3 +28,26 @@ class GenerateResponse(BaseModel):
     campaign_id: UUID
     post_ids: list[UUID]
     message: str = "Geração iniciada. Conecte ao stream para acompanhar em tempo real."
+
+
+class HumanReviewRequest(BaseModel):
+    action: Literal["approve", "redo"]
+    platform: Optional[str] = None
+    feedback: Optional[str] = None
+    langsmith_run_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_redo(self):
+        if self.action == "redo":
+            if not (self.feedback or "").strip():
+                raise ValueError("feedback é obrigatório ao refazer")
+            if not self.platform:
+                raise ValueError("platform é obrigatório ao refazer")
+        return self
+
+
+class HumanReviewResponse(BaseModel):
+    campaign_id: UUID
+    status: str
+    posts: list[dict]
+    awaiting_review: bool = False
