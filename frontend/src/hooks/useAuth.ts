@@ -1,9 +1,14 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { api } from '../lib/api';
+import { bootstrapAuthSession } from '../lib/authBootstrap';
 import { useAppStore } from '../store/useAppStore';
 import { showSuccess } from '../lib/toast';
+
+type AuthLoginResponse = {
+    access_token: string;
+    user: { id: string; email: string };
+};
 
 export function useAuth() {
     const { user, accessToken, isAuthLoading, setAuth, clearAuth } = useAppStore();
@@ -13,32 +18,15 @@ export function useAuth() {
 
     /** Restore session from HttpOnly cookie on page load. */
     const silentRefresh = useCallback(async () => {
-        try {
-            const res = await axios.post(
-                `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/auth/refresh`,
-                {},
-                { withCredentials: true },
-            );
-            const newToken: string = res.data.access_token;
-            // Fetch user info
-            const meRes = await axios.get(
-                `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/auth/me`,
-                { headers: { Authorization: `Bearer ${newToken}` } },
-            );
-            setAuth({ id: meRes.data.id, email: meRes.data.email }, newToken);
-        } catch {
-            clearAuth();
-        }
-    }, [setAuth, clearAuth]);
+        await bootstrapAuthSession();
+    }, []);
 
     const login = useCallback(
         async (email: string, password: string) => {
-            const res = await api.post('/api/v1/auth/login', { email, password });
+            const res = await api.post<AuthLoginResponse>('/api/v1/auth/login', { email, password });
             const token: string = res.data.access_token;
-            const meRes = await api.get('/api/v1/auth/me', {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            setAuth({ id: meRes.data.id, email: meRes.data.email }, token);
+            const profile = res.data.user;
+            setAuth({ id: profile.id, email: profile.email }, token);
             showSuccess('Login realizado com sucesso!');
             navigate('/campanhas');
         },

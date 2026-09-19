@@ -8,6 +8,7 @@ export const api = axios.create({
         'Content-Type': 'application/json',
     },
     withCredentials: true, // required to send/receive HttpOnly refresh_token cookie
+    timeout: 20_000,
 });
 
 // Request interceptor — attach access token from Zustand memory
@@ -38,7 +39,10 @@ api.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        const url = String(originalRequest?.url ?? '');
+        const isAuthRefresh = url.includes('/api/v1/auth/refresh');
+        const isAuthLogin = url.includes('/api/v1/auth/login');
+        if (error.response?.status === 401 && !originalRequest._retry && !isAuthRefresh && !isAuthLogin) {
             if (isRefreshing) {
                 return new Promise<string>((resolve, reject) => {
                     failedQueue.push({ resolve, reject });
@@ -53,14 +57,31 @@ api.interceptors.response.use(
 
             try {
                 // Use a bare axios call so this request doesn't re-trigger the interceptor
-                const res = await axios.post(
+                const res = await axios.post<{ access_token: string; user?: { id: string; email: string } }>(
                     `${api.defaults.baseURL}/api/v1/auth/refresh`,
                     {},
-                    { withCredentials: true },
+                    { withCredentials: true, timeout: 12_000 },
                 );
                 const newToken: string = res.data.access_token;
+                const refreshedUser = res.data.user;
                 const currentUser = useAppStore.getState().user;
-                useAppStore.getState().setAuth(currentUser!, newToken);
+                if (refreshedUser?.id && refreshedUser?.email) {
+                    useAppStore.getState().setAuth(
+                        { id: refreshedUser.id, email: refreshedUser.email },
+                        newToken,
+                    );
+                } else if (currentUser) {
+                    useAppStore.getState().setAuth(currentUser, newToken);
+                } else {
+                    const meRes = await axios.get<{ id: string; email: string }>(
+                        `${api.defaults.baseURL}/api/v1/auth/me`,
+                        { headers: { Authorization: `Bearer ${newToken}` }, timeout: 12_000 },
+                    );
+                    useAppStore.getState().setAuth(
+                        { id: meRes.data.id, email: meRes.data.email },
+                        newToken,
+                    );
+                }
 
                 processQueue(null, newToken);
                 originalRequest.headers.Authorization = `Bearer ${newToken}`;
@@ -68,7 +89,11 @@ api.interceptors.response.use(
             } catch (refreshError) {
                 processQueue(refreshError, null);
                 useAppStore.getState().clearAuth();
-                window.location.href = '/login';
+                const onLogin = window.location.pathname.startsWith('/login')
+                    || window.location.pathname.startsWith('/register');
+                if (!onLogin) {
+                    window.location.href = '/login';
+                }
                 return Promise.reject(refreshError);
             } finally {
                 isRefreshing = false;

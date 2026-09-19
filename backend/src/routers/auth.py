@@ -5,7 +5,7 @@ from src.config import settings
 from src.database import get_db
 from src.dependencies.auth import get_current_user
 from src.models.user import User
-from src.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
+from src.schemas.auth import AuthSessionResponse, LoginRequest, RegisterRequest, UserResponse
 from src.services.auth_service import (
     create_access_token,
     create_refresh_token,
@@ -45,7 +45,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     return user
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=AuthSessionResponse)
 def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == body.email, User.is_active == True).first()
     if not user or not verify_password(body.password, user.hashed_password):
@@ -57,10 +57,10 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
     _set_refresh_cookie(response, refresh_token)
-    return TokenResponse(access_token=access_token)
+    return AuthSessionResponse(access_token=access_token, user=user)
 
 
-@router.post("/refresh", response_model=TokenResponse)
+@router.post("/refresh", response_model=AuthSessionResponse)
 def refresh(request: Request, response: Response, db: Session = Depends(get_db)):
     token = request.cookies.get(_REFRESH_COOKIE)
     if not token:
@@ -83,7 +83,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     new_access = create_access_token(user.id)
     new_refresh = create_refresh_token(user.id)
     _set_refresh_cookie(response, new_refresh)
-    return TokenResponse(access_token=new_access)
+    return AuthSessionResponse(access_token=new_access, user=user)
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
