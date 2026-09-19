@@ -12,6 +12,8 @@ def test_get_goals_seeds_rows_and_returns_audience_copy(client, user_factory, au
     assert payload["audience"] == "mei_loja_liberal"
     assert payload["total_count"] == 6
     assert any(goal["key"] == "connect_account" and goal["featured"] for goal in payload["goals"])
+    first_gen = next(g for g in payload["goals"] if g["key"] == "first_generation")
+    assert "objetivo" not in first_gen["title"].lower()
     assert payload["goals"][0]["title"]
 
 

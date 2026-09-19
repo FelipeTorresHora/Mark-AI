@@ -18,7 +18,7 @@ AudienceType = Literal["mei_loja_liberal", "founder", "faceless"]
 
 ALL_GOAL_KEYS: tuple[str, ...] = (
     "connect_account",
-    "define_objective",
+    "first_generation",
     "approve_first_post",
     "publish_3_in_7_days",
     "two_channels",
@@ -37,9 +37,9 @@ GOAL_COPY: dict[AudienceType, dict[str, dict[str, str]]] = {
             "title": "Conectar sua primeira conta",
             "description": "Vincule X ou LinkedIn para publicar sem sair do Mark.",
         },
-        "define_objective": {
-            "title": "Definir seu objetivo",
-            "description": "Comece uma campanha com a pauta que você quer alcançar na região.",
+        "first_generation": {
+            "title": "Primeira rodada de geração",
+            "description": "Crie sua primeira campanha com a IA e comece a ganhar ritmo.",
         },
         "approve_first_post": {
             "title": "Aprovar o primeiro post",
@@ -63,9 +63,9 @@ GOAL_COPY: dict[AudienceType, dict[str, dict[str, str]]] = {
             "title": "Conectar sua primeira conta",
             "description": "Conecte X ou LinkedIn para distribuir narrativa de produto.",
         },
-        "define_objective": {
-            "title": "Definir seu objetivo",
-            "description": "Lance uma campanha alinhada à tração que você busca.",
+        "first_generation": {
+            "title": "Primeira rodada de geração",
+            "description": "Dispare sua primeira leva de posts gerados e mantenha o momentum.",
         },
         "approve_first_post": {
             "title": "Aprovar o primeiro post",
@@ -89,9 +89,9 @@ GOAL_COPY: dict[AudienceType, dict[str, dict[str, str]]] = {
             "title": "Conectar sua primeira conta",
             "description": "Conecte uma rede para publicar sem mostrar o rosto.",
         },
-        "define_objective": {
-            "title": "Definir seu objetivo",
-            "description": "Descreva o que a marca deve comunicar, não quem aparece na foto.",
+        "first_generation": {
+            "title": "Primeira rodada de geração",
+            "description": "Gere sua primeira leva de conteúdo e construa o hábito de publicar.",
         },
         "approve_first_post": {
             "title": "Primeiro post faceless",
@@ -123,6 +123,12 @@ class GoalMetrics:
     published_last_7_days: int
     connected_platforms: int
     publish_days_last_7: int
+
+
+def _normalize_goal_key(goal_key: str) -> str:
+    if goal_key == "define_objective":
+        return "first_generation"
+    return goal_key
 
 
 def normalize_audience(raw: str | None) -> AudienceType:
@@ -223,7 +229,7 @@ def collect_goal_metrics(db: Session, user_id) -> GoalMetrics:
 def _goal_progress(goal_key: str, metrics: GoalMetrics, audience: AudienceType) -> tuple[int, int, bool]:
     if goal_key == "connect_account":
         current, target = metrics.connected_accounts, 1
-    elif goal_key == "define_objective":
+    elif goal_key in ("first_generation", "define_objective"):
         current, target = metrics.campaign_count, 1
     elif goal_key == "approve_first_post":
         current, target = min(metrics.approved_posts, 1), 1
@@ -269,18 +275,19 @@ def build_goals_payload(db: Session, user: User) -> dict:
 
     goals = []
     completed_count = 0
-    for row in sorted(rows, key=lambda r: ALL_GOAL_KEYS.index(r.goal_key)):
+    for row in sorted(rows, key=lambda r: ALL_GOAL_KEYS.index(_normalize_goal_key(r.goal_key))):
+        goal_key = _normalize_goal_key(row.goal_key)
         current, target, completed = _goal_progress(row.goal_key, metrics, audience)
         if completed:
             completed_count += 1
         progress_pct = 100 if completed else int(min(100, round((current / target) * 100))) if target else 0
-        meta = copy[row.goal_key]
+        meta = copy[goal_key]
         goals.append(
             {
-                "key": row.goal_key,
+                "key": goal_key,
                 "title": meta["title"],
                 "description": meta["description"],
-                "featured": row.goal_key in featured,
+                "featured": goal_key in featured,
                 "completed": completed,
                 "completed_at": row.completed_at,
                 "current": current,

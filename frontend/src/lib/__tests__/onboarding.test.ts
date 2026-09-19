@@ -24,5 +24,6 @@ describe('onboarding storage', () => {
     it('returns audience-specific goals', () => {
         const goals = getGoalsForAudience('faceless', false);
         expect(goals.some((g) => g.label.includes('faceless'))).toBe(true);
+        expect(goals.some((g) => g.label.toLowerCase().includes('objetivo'))).toBe(false);
     });
 });

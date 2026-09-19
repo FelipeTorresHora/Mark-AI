@@ -58,10 +58,7 @@ export function OnboardingPage() {
     function handleFinishOnboarding() {
         if (!userId) return;
         completeOnboarding(userId);
-        navigate('/campanhas', {
-            replace: true,
-            state: { openObjective: true, audience: activeAudience },
-        });
+        navigate('/objetivo', { replace: true });
     }
 
     if (stored.completed) {
@@ -214,18 +211,18 @@ export function OnboardingPage() {
                                 </div>
                                 <div className="flex-1">
                                     <h3 className="text-lg font-black app-text" style={{ lineHeight: 1.1 }}>
-                                        Próximo passo: definir seu objetivo
+                                        Próximo passo: objetivo da campanha
                                     </h3>
                                     <p className="text-sm app-text-secondary mt-2 leading-relaxed">
-                                        Diga o que quer alcançar — abrir agenda, lançar produto, crescer sem aparecer — e
-                                        geramos posts para os canais conectados.
+                                        As metas acima acompanham seu hábito. Na tela Objetivo você descreve o que quer
+                                        alcançar nesta rodada — agenda, lançamento, crescimento — e a IA gera os posts.
                                     </p>
                                     <button
                                         type="button"
                                         onClick={handleFinishOnboarding}
                                         className="mt-5 py-3 px-8 bg-primary-400 hover:scale-105 active:scale-95 text-primary-900 font-semibold rounded-full text-sm transition-all duration-150 inline-flex items-center gap-2"
                                     >
-                                        Definir meu objetivo
+                                        Ir para Objetivo
                                         <ArrowRight size={16} />
                                     </button>
                                 </div>
