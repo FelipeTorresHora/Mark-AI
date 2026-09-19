@@ -7,7 +7,7 @@ import { useXIntegrationStatus } from '../hooks/useXIntegration';
 import { EditPostModal } from '../components/posts/EditPostModal';
 import { Pagination } from '../components/common/Pagination';
 import { Button } from '../components/common/Button';
-import { cn, formatScheduledAt } from '../lib/utils';
+import { cn, formatScheduledAt, isDatetimeLocalBeforeNow } from '../lib/utils';
 import { CheckCircle, XCircle, Pencil, Calendar, Twitter, Linkedin, FileText, X as XIcon, MoreHorizontal, Send, Clock } from 'lucide-react';
 import type { PostStatus, Platform } from '../types';
 
@@ -215,6 +215,7 @@ function PostRowCard({ post, onEdit, onApprove, onReject, onCancel, isApproving,
 function XComposer() {
     const [content, setContent] = useState('');
     const [scheduledAt, setScheduledAt] = useState('');
+    const [scheduleNowMs] = useState(() => Date.now());
     const { data: xStatus } = useXIntegrationStatus();
     const publishNow = usePublishXPost();
     const schedulePost = useScheduleXPost();
@@ -222,7 +223,7 @@ function XComposer() {
     const trimmed = content.trim();
     const isOverLimit = content.length > 280;
     const hasSchedule = scheduledAt.length > 0;
-    const scheduleIsPast = hasSchedule && new Date(scheduledAt).getTime() <= Date.now();
+    const scheduleIsPast = hasSchedule && isDatetimeLocalBeforeNow(scheduledAt, scheduleNowMs);
     const disabled = !trimmed || isOverLimit || !xStatus?.connected || publishNow.isPending || schedulePost.isPending;
 
     async function submitNow() {
@@ -233,7 +234,7 @@ function XComposer() {
     }
 
     async function submitSchedule() {
-        if (disabled || !hasSchedule || scheduleIsPast) return;
+        if (disabled || !hasSchedule || new Date(scheduledAt).getTime() <= Date.now()) return;
         await schedulePost.mutateAsync({
             content: trimmed,
             scheduled_at: new Date(scheduledAt).toISOString(),

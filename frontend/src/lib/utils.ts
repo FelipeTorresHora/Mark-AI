@@ -5,6 +5,11 @@ export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
+/** Compare datetime-local input value to a fixed timestamp (avoid Date.now() during render). */
+export function isDatetimeLocalBeforeNow(value: string, nowMs: number): boolean {
+    return new Date(value).getTime() <= nowMs;
+}
+
 /** Extrai mensagem de erro de qualquer valor — substitui `err: any`. */
 export function getErrorMessage(err: unknown, fallback = 'Erro desconhecido'): string {
     if (typeof err === 'string') return err;
