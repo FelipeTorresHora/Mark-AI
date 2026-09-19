@@ -1,201 +1,20 @@
 import { useState, useMemo } from 'react';
-import { Plus, X } from 'lucide-react';
-import {
-    POST_TEMPLATES,
-    TEMPLATE_CATEGORIES,
-    type PostTemplate,
-    type TemplateCategory,
-} from '../data/postTemplates';
+import { Link } from 'react-router-dom';
+import { Plus, Search, Sparkles, X } from 'lucide-react';
+import { POST_TEMPLATES, type PostTemplate } from '../data/postTemplates';
 import { TemplateCustomizeModal } from '../components/templates/TemplateCustomizeModal';
-import { Pagination } from '../components/common/Pagination';
+import { CreateTemplateModal } from '../components/templates/CreateTemplateModal';
+import { TemplateCard } from '../components/templates/TemplateCard';
+import {
+    TemplatesCategoryNav,
+    type TemplatesCategoryFilter,
+} from '../components/templates/TemplatesCategoryNav';
+import { filterTemplates } from '../components/templates/templateUtils';
 import { cn } from '../lib/utils';
 
-const PAGE_SIZE = 6;
-
-function extractPlaceholders(body: string): readonly string[] {
-    const matches = [...body.matchAll(/\{\{(\w+)\}\}/g)];
-    return [...new Set(matches.map((m) => m[1]))];
-}
-
-// ─── CreateTemplateModal ──────────────────────────────────────────────────────
-
-function CreateTemplateModal({
-    open,
-    onClose,
-    onSave,
-}: {
-    open: boolean;
-    onClose: () => void;
-    onSave: (t: PostTemplate) => void;
-}) {
-    const [title, setTitle] = useState('');
-    const [body, setBody] = useState('');
-    const [error, setError] = useState('');
-
-    const detectedPlaceholders = useMemo(() => extractPlaceholders(body), [body]);
-
-    function handleSave() {
-        if (!title.trim()) { setError('Dê um nome ao template.'); return; }
-        if (!body.trim()) { setError('O corpo do template não pode ser vazio.'); return; }
-        onSave({
-            id: `custom-${Date.now()}`,
-            category: 'launch',
-            title: title.trim(),
-            previewText: 'Template personalizado',
-            bodyTemplate: body.trim(),
-            platform: 'AMBOS',
-            placeholders: detectedPlaceholders,
-        });
-        setTitle('');
-        setBody('');
-        setError('');
-        onClose();
-    }
-
-    function handleClose() {
-        setTitle('');
-        setBody('');
-        setError('');
-        onClose();
-    }
-
-    if (!open) return null;
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[rgba(14,15,12,0.5)] backdrop-blur-sm">
-            <div className="app-panel rounded-[30px] w-full max-w-lg p-6">
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="font-black app-text" style={{ fontSize: '1.4rem', lineHeight: 0.9 }}>
-                        Criar Template
-                    </h2>
-                    <button
-                        onClick={handleClose}
-                        className="p-2 rounded-full text-[#868685] hover:text-[#0e0f0c] dark:hover:text-[#e8ebe6] hover:bg-[rgba(14,15,12,0.06)] dark:hover:bg-white/8 transition-all"
-                    >
-                        <X size={18} />
-                    </button>
-                </div>
-
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-semibold app-text-secondary mb-1.5">
-                            Nome do Template
-                        </label>
-                        <input
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            placeholder="Ex: Promoção Relâmpago"
-                            className="app-input text-sm px-3 py-2 rounded-[10px]"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-semibold app-text-secondary mb-1.5">
-                            Corpo do Template
-                            <span className="ml-2 app-text-soft font-normal">use {'{{nome}}'} para criar campos</span>
-                        </label>
-                        <textarea
-                            value={body}
-                            onChange={(e) => setBody(e.target.value)}
-                            placeholder={'Olá {{nome_cliente}}!\n\nTemos uma oferta exclusiva de {{descricao_oferta}}.\n\nAproveite: {{link_ou_cta}}'}
-                            rows={6}
-                            className="app-input text-sm font-mono resize-none px-3 py-2 rounded-[10px]"
-                        />
-                    </div>
-
-                    {detectedPlaceholders.length > 0 && (
-                        <div>
-                            <p className="text-xs font-semibold app-text-secondary mb-1.5">
-                                Campos detectados
-                            </p>
-                            <div className="flex flex-wrap gap-1">
-                                {detectedPlaceholders.map((p) => (
-                                    <span
-                                        key={p}
-                                        className="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-medium bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400 border border-primary-100 dark:border-primary-800"
-                                    >
-                                        {`{{${p}}}`}
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {error && (
-                        <p className="text-xs text-rose-500 font-semibold">{error}</p>
-                    )}
-                </div>
-
-                <div className="flex gap-2 mt-6">
-                    <button
-                        onClick={handleClose}
-                        className="flex-1 py-2 rounded-full text-sm font-semibold bg-[rgba(14,15,12,0.06)] dark:bg-white/8 text-[#454745] dark:text-[#868685] hover:bg-[rgba(14,15,12,0.10)] dark:hover:bg-white/12 transition-all hover:scale-105 active:scale-95"
-                    >
-                        Cancelar
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        className="flex-1 py-2 rounded-full text-sm font-semibold bg-primary-400 text-primary-900 hover:scale-105 active:scale-95 transition-all"
-                    >
-                        Salvar Template
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ─── TemplateCard ────────────────────────────────────────────────────────────
-
-function TemplateCard({
-    template,
-    onSelect,
-}: {
-    template: PostTemplate;
-    onSelect: (id: string) => void;
-}) {
-    return (
-        <div className="group flex flex-col app-panel rounded-[30px] p-5 hover:border-primary-200 dark:hover:border-primary-700/40 transition-all duration-200">
-            <h3 className="font-bold app-text text-sm mb-1.5 leading-snug">
-                {template.title}
-            </h3>
-            <p className="text-xs app-text-soft leading-relaxed flex-1 mb-4">
-                {template.previewText}
-            </p>
-
-            {template.placeholders.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-4">
-                    {template.placeholders.slice(0, 4).map((p) => (
-                        <span
-                            key={p}
-                            className="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-medium bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400 border border-primary-100 dark:border-primary-800"
-                        >
-                            {`{{${p}}}`}
-                        </span>
-                    ))}
-                    {template.placeholders.length > 4 && (
-                        <span className="text-[10px] app-text-soft self-center">
-                            +{template.placeholders.length - 4}
-                        </span>
-                    )}
-                </div>
-            )}
-
-            <button
-                onClick={() => onSelect(template.id)}
-                className="w-full py-2 rounded-full text-sm font-semibold bg-primary-400 text-primary-900 hover:scale-105 active:scale-95 transition-all duration-150"
-            >
-                Usar Template
-            </button>
-        </div>
-    );
-}
-
-// ─── TemplatesPage ────────────────────────────────────────────────────────────
-
 export function TemplatesPage() {
-    const [activeCategory, setActiveCategory] = useState<TemplateCategory | null>(null);
-    const [page, setPage] = useState(0);
+    const [activeCategory, setActiveCategory] = useState<TemplatesCategoryFilter>('all');
+    const [search, setSearch] = useState('');
     const [selectedTemplate, setSelectedTemplate] = useState<PostTemplate | null>(null);
     const [customTemplates, setCustomTemplates] = useState<PostTemplate[]>([]);
     const [createOpen, setCreateOpen] = useState(false);
@@ -205,19 +24,29 @@ export function TemplatesPage() {
         [customTemplates],
     );
 
-    const filtered = useMemo(
-        () => activeCategory ? allTemplates.filter((t) => t.category === activeCategory) : allTemplates,
-        [allTemplates, activeCategory],
-    );
+    const categoryCounts = useMemo(() => {
+        const base: Record<TemplatesCategoryFilter, number> = {
+            all: allTemplates.length,
+            launch: 0,
+            testimonial: 0,
+            educational: 0,
+        };
+        for (const t of allTemplates) {
+            base[t.category] += 1;
+        }
+        return base;
+    }, [allTemplates]);
 
-    const paginated = useMemo(
-        () => filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
-        [filtered, page],
-    );
+    const filtered = useMemo(() => {
+        let list = allTemplates;
+        if (activeCategory !== 'all') {
+            list = list.filter((t) => t.category === activeCategory);
+        }
+        return filterTemplates(list, search);
+    }, [allTemplates, activeCategory, search]);
 
-    function handleCategoryToggle(cat: TemplateCategory) {
-        setActiveCategory((prev) => (prev === cat ? null : cat));
-        setPage(0);
+    function handleCategoryChange(cat: TemplatesCategoryFilter) {
+        setActiveCategory(cat);
     }
 
     function handleSelectTemplate(id: string) {
@@ -227,72 +56,132 @@ export function TemplatesPage() {
 
     function handleSaveCustom(t: PostTemplate) {
         setCustomTemplates((prev) => [...prev, t]);
+        setActiveCategory('all');
     }
 
     return (
-        <div className="pt-2 pb-8">
-            <div className="flex items-start justify-between gap-4 mb-6">
-                <div>
+        <div className="pt-2 pb-10 max-w-[1400px]">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-6">
+                <div className="max-w-2xl">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary-700 dark:text-primary-400 mb-2">
+                        Atalho opcional
+                    </p>
                     <h1
                         className="font-black app-text tracking-tight"
-                        style={{ fontSize: '2.2rem', lineHeight: 0.9 }}
+                        style={{ fontSize: 'clamp(2rem, 4vw, 2.75rem)', lineHeight: 0.9 }}
                     >
-                        Biblioteca de Templates
+                        Templates prontos
                     </h1>
-                    <p className="app-text-soft mt-2 text-sm font-semibold">
-                        Escolha um template, preencha os campos e gere sua campanha em segundos.
+                    <p className="app-text-secondary mt-3 text-base font-semibold leading-relaxed">
+                        Escaneie, personalize em poucos campos e leve o texto para uma nova campanha — sem
+                        substituir o fluxo principal por objetivo.
                     </p>
                 </div>
 
                 <button
+                    type="button"
                     onClick={() => setCreateOpen(true)}
-                    className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold bg-primary-400 text-primary-900 hover:scale-105 active:scale-95 transition-all duration-150"
+                    className="shrink-0 self-start lg:self-auto flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold bg-primary-400 text-primary-900 hover:scale-105 active:scale-95 transition-all duration-150"
                 >
-                    <Plus size={15} />
-                    Criar Template
+                    <Plus size={16} />
+                    Criar template
                 </button>
             </div>
 
-            {/* Category tabs — click novamente para ver todos */}
-            <div className="flex gap-2 flex-wrap mb-8">
-                {TEMPLATE_CATEGORIES.map((cat) => {
-                    const Icon = cat.icon;
-                    const isActive = cat.id === activeCategory;
-                    return (
-                        <button
-                            key={cat.id}
-                            onClick={() => handleCategoryToggle(cat.id)}
-                            className={cn(
-                                'flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200',
-                                isActive
-                                    ? 'bg-primary-400 text-primary-900 hover:scale-105 active:scale-95'
-                                    : 'app-panel-subtle app-text-secondary hover:bg-[var(--app-hover-strong)] dark:hover:bg-white/12',
-                            )}
+            <div
+                className={cn(
+                    'mb-8 rounded-[24px] px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3',
+                    'bg-[#e2f6d5]/50 dark:bg-primary-900/20 ring-1 ring-[rgba(22,51,0,0.1)]',
+                )}
+            >
+                <div className="flex items-start gap-2 flex-1">
+                    <Sparkles size={18} className="text-[#163300] dark:text-primary-400 shrink-0 mt-0.5" />
+                    <p className="text-sm font-semibold text-[#163300] dark:text-primary-200 leading-relaxed">
+                        Prefere começar do zero? Defina seu objetivo em{' '}
+                        <Link
+                            to="/campanhas"
+                            className="underline underline-offset-2 decoration-[#9fe870] hover:opacity-80"
                         >
-                            <Icon size={15} />
-                            {cat.label}
-                        </button>
-                    );
-                })}
+                            Campanhas
+                        </Link>
+                        . Templates aceleram quando você já sabe o formato.
+                    </p>
+                </div>
             </div>
 
-            {/* Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {paginated.map((template) => (
-                    <TemplateCard
-                        key={template.id}
-                        template={template}
-                        onSelect={handleSelectTemplate}
+            <div className="flex flex-col lg:flex-row gap-8">
+                <aside className="lg:w-[280px] shrink-0">
+                    <TemplatesCategoryNav
+                        active={activeCategory}
+                        onChange={handleCategoryChange}
+                        counts={categoryCounts}
                     />
-                ))}
-            </div>
+                </aside>
 
-            <Pagination
-                page={page}
-                total={filtered.length}
-                limit={PAGE_SIZE}
-                onPageChange={setPage}
-            />
+                <div className="flex-1 min-w-0">
+                    <div className="relative mb-5">
+                        <Search
+                            size={18}
+                            className="absolute left-3.5 top-1/2 -translate-y-1/2 app-text-soft pointer-events-none"
+                        />
+                        <input
+                            type="search"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Buscar por título, descrição ou campo…"
+                            aria-label="Buscar templates"
+                            className={cn(
+                                'w-full app-input pl-10 pr-10 py-2.5 rounded-full text-sm font-medium',
+                                'ring-1 ring-[rgba(14,15,12,0.12)] focus:ring-[#9fe870]',
+                            )}
+                        />
+                        {search && (
+                            <button
+                                type="button"
+                                onClick={() => setSearch('')}
+                                aria-label="Limpar busca"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full hover:bg-[rgba(14,15,12,0.06)]"
+                            >
+                                <X size={16} className="app-text-soft" />
+                            </button>
+                        )}
+                    </div>
+
+                    <p className="text-xs font-semibold app-text-soft mb-4">
+                        {filtered.length}{' '}
+                        {filtered.length === 1 ? 'template encontrado' : 'templates encontrados'}
+                    </p>
+
+                    {filtered.length === 0 ? (
+                        <div className="app-panel rounded-[30px] p-10 text-center ring-1 ring-[rgba(14,15,12,0.12)]">
+                            <p className="font-semibold app-text mb-1">Nenhum template nesta busca</p>
+                            <p className="text-sm app-text-soft mb-4">
+                                Tente outra palavra ou veja todas as categorias.
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSearch('');
+                                    setActiveCategory('all');
+                                }}
+                                className="px-4 py-2 rounded-full text-sm font-semibold bg-[rgba(22,51,0,0.08)] hover:scale-105 active:scale-95 transition-all"
+                            >
+                                Limpar filtros
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {filtered.map((template) => (
+                                <TemplateCard
+                                    key={template.id}
+                                    template={template}
+                                    onSelect={handleSelectTemplate}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
 
             <TemplateCustomizeModal
                 template={selectedTemplate}
