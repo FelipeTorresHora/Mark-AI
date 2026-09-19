@@ -10,7 +10,7 @@ from src.models.campaign import Campaign
 from src.models.post import Post
 from src.models.user import User
 from src.schemas.post import PostResponse, PostPatchBody, PostRedoBody
-from src.services.gemini import generate_post
+from src.services.content_generation import generate_post
 from src.schemas.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/posts", tags=["posts"])
