@@ -33,6 +33,7 @@ class UserResponse(BaseModel):
     email: str
     is_active: bool
     timezone: str
+    audience: str = "mei_loja_liberal"
     created_at: datetime
 
     model_config = {"from_attributes": True}

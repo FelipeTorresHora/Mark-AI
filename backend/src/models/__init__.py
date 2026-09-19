@@ -7,3 +7,4 @@ from src.models.social_account import SocialAccount
 from src.models.x_account import XAccount
 from src.models.x_audit_log import XAuditLog
 from src.models.post_insight_snapshot import PostInsightSnapshot
+from src.models.user_goal import UserGoal

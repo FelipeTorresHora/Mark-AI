@@ -8,6 +8,7 @@ import { Pagination } from '../components/common/Pagination';
 import { api } from '../lib/api';
 import { toast } from '../lib/toast';
 import { Plus, FileText, CheckCircle, Clock, AlertCircle, Zap, Trash2 } from 'lucide-react';
+import { GoalsWidget } from '../components/dashboard/GoalsWidget';
 import { cn, isNotFoundError } from '../lib/utils';
 import type { PostsPerPlatform } from '../types';
 
@@ -139,6 +140,8 @@ export function DashboardPage() {
                     <Plus size={18} /> Nova Campanha
                 </Button>
             </div>
+
+            <GoalsWidget />
 
             {isComposerOpen && (
                 <Card className="p-6 mb-6">
