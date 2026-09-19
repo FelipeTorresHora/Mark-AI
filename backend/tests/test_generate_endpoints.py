@@ -187,6 +187,60 @@ def test_generation_stream_resumes_terminal_campaign_without_rerunning_graph(
     assert any('"resumed": true' in event for event in events)
 
 
+def test_generation_stream_does_not_rerun_graph_when_checkpoint_exists(
+    db_session,
+    user_factory,
+    campaign_factory,
+    post_factory,
+    monkeypatch,
+):
+    user = user_factory()
+    campaign = campaign_factory(user)
+    post_factory(campaign, platform="X", content=None)
+    post_factory(campaign, platform="LINKEDIN", content=None)
+
+    run_count = {"value": 0}
+
+    async def fake_run_until_review(**kwargs):
+        run_count["value"] += 1
+        emitter = kwargs.get("emitter")
+        if emitter:
+            for platform in kwargs.get("platforms", []):
+                emitter(
+                    "writer_start",
+                    platform,
+                    {"post_id": "1", "variant_index": 1, "platform_total": 1},
+                )
+                emitter(
+                    "writer_done",
+                    platform,
+                    {
+                        "post_id": "1",
+                        "content": f"{platform} ok",
+                        "variant_index": 1,
+                        "platform_total": 1,
+                    },
+                )
+        return {
+            "platform_contents": {p: f"{p} ok" for p in kwargs.get("platforms", [])},
+            "__interrupt__": [object()],
+        }
+
+    monkeypatch.setattr("src.services.sse.run_until_review", fake_run_until_review)
+
+    async def collect_events():
+        return [event async for event in generation_stream(str(campaign.id), db_session)]
+
+    first_events = asyncio.run(collect_events())
+    second_events = asyncio.run(collect_events())
+
+    assert run_count["value"] == 1
+    assert len([e for e in first_events if '"writer_done"' in e]) == 2
+    assert not any('"writer_start"' in e for e in second_events)
+    assert any('"generation_complete"' in e for e in second_events)
+    assert any('"resumed": true' in e for e in second_events)
+
+
 def test_generation_stream_skips_instagram_without_account(
     db_session,
     user_factory,

@@ -8,7 +8,12 @@ from sqlalchemy.orm import Session
 from src.models.campaign import Campaign
 from src.models.post import Post
 from src.services.generation_platforms import platform_generation_block_reason
-from src.services.langgraph_pipeline import new_thread_id, run_until_review
+from src.services.langgraph_pipeline import (
+    get_review_interrupt_contents,
+    graph_checkpoint_exists,
+    new_thread_id,
+    run_until_review,
+)
 
 KEEPALIVE_INTERVAL_SECONDS = 12
 TERMINAL_CAMPAIGN_STATUSES = frozenset({"AWAITING_REVIEW", "DONE", "FAILED"})
@@ -43,9 +48,10 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
         )
         return
 
-    campaign.status = "GENERATING"
+    thread_id = campaign.graph_thread_id or new_thread_id()
     if not campaign.graph_thread_id:
-        campaign.graph_thread_id = new_thread_id()
+        campaign.graph_thread_id = thread_id
+    campaign.status = "GENERATING"
     objective = campaign.objective or campaign.topic
     db.commit()
 
@@ -65,11 +71,76 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
     platforms = list(posts_by_platform.keys())
     platform_post_ids = {p: str(posts_by_platform[p].id) for p in platforms}
 
-    yield make_event(
+    plan_event = make_event(
         "generation_plan",
         None,
         {"platforms": {p: platform_totals.get(p, 1) for p in platforms}},
     )
+
+    async def finalize_from_contents(
+        contents: dict[str, str],
+        *,
+        graph_error: str | None = None,
+    ) -> str | None:
+        nonlocal campaign
+        campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+        if not campaign:
+            return "Campanha não encontrada"
+        any_generated = False
+        for platform, post in posts_by_platform.items():
+            if platform in contents:
+                post.content = contents[platform]
+                post.status = "UNDER_REVIEW"
+                any_generated = True
+            elif graph_error:
+                post.status = "DRAFT"
+
+        if graph_error and any_generated:
+            graph_error = None
+
+        campaign.status = "AWAITING_REVIEW" if not graph_error else "FAILED"
+        db.commit()
+        return graph_error
+
+    existing_contents = get_review_interrupt_contents(thread_id)
+    if existing_contents is not None:
+        yield plan_event
+        graph_error = await finalize_from_contents(existing_contents)
+        yield make_event(
+            "generation_complete",
+            None,
+            {
+                "campaign_id": campaign_id,
+                "awaiting_review": not graph_error,
+                "resumed": True,
+            },
+        )
+        return
+
+    if graph_checkpoint_exists(thread_id):
+        yield plan_event
+        deadline = asyncio.get_running_loop().time() + KEEPALIVE_INTERVAL_SECONDS * 60
+        waited_contents: dict[str, str] | None = None
+        while asyncio.get_running_loop().time() < deadline:
+            waited_contents = get_review_interrupt_contents(thread_id)
+            if waited_contents is not None:
+                break
+            yield keepalive_comment()
+            await asyncio.sleep(KEEPALIVE_INTERVAL_SECONDS / 2)
+        if waited_contents is not None:
+            graph_error = await finalize_from_contents(waited_contents)
+            yield make_event(
+                "generation_complete",
+                None,
+                {
+                    "campaign_id": campaign_id,
+                    "awaiting_review": not graph_error,
+                    "resumed": True,
+                },
+            )
+            return
+
+    yield plan_event
 
     events_queue: asyncio.Queue[tuple[str, str | None, dict]] = asyncio.Queue()
     loop = asyncio.get_running_loop()
@@ -161,22 +232,7 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
     await task
 
     contents = (graph_result or {}).get("platform_contents") or {}
-    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
-    if campaign:
-        any_generated = False
-        for platform, post in posts_by_platform.items():
-            if platform in contents:
-                post.content = contents[platform]
-                post.status = "UNDER_REVIEW"
-                any_generated = True
-            elif graph_error:
-                post.status = "DRAFT"
-
-        if graph_error and any_generated:
-            graph_error = None
-
-        campaign.status = "AWAITING_REVIEW" if not graph_error else "FAILED"
-        db.commit()
+    graph_error = await finalize_from_contents(contents, graph_error=graph_error)
 
     yield make_event(
         "generation_complete",
