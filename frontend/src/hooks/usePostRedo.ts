@@ -33,5 +33,6 @@ export function usePostRedo() {
         redoPost: (postId: string, instruction: string) =>
             mutation.mutateAsync({ postId, instruction }),
         isRedoing: mutation.isPending,
+        redoingPostId: mutation.variables?.postId ?? null,
     };
 }

@@ -13,6 +13,7 @@ import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { cn, formatScheduledAt } from '../lib/utils';
 import { showError, showSuccess } from '../lib/toast';
+import { api } from '../lib/api';
 import { CheckCircle, XCircle, ArrowLeft, MessageSquare, Pencil, Calendar, Send, Globe, Clock, Save, RotateCcw } from 'lucide-react';
 
 function toDatetimeLocal(iso: string): string {
@@ -53,8 +54,9 @@ const PostCard = memo(function PostCard({
     const isFinal = post.status === 'FINAL';
     const isRejectedStatus = post.status === 'REJECTED';
     const isPublished = post.status === 'PUBLISHED';
-    const isPending = !isFinal && !isRejectedStatus && !isPublished;
-    const canAct = !isRejectedStatus && !isPublished;
+    const isSkipped = post.status === 'SKIPPED';
+    const isPending = !isFinal && !isRejectedStatus && !isPublished && !isSkipped;
+    const canAct = !isRejectedStatus && !isPublished && !isSkipped;
 
     const [isEditMode, setIsEditMode] = useState(false);
     const [editContent, setEditContent] = useState(post.content ?? '');
@@ -93,6 +95,7 @@ const PostCard = memo(function PostCard({
             'app-panel-subtle border-emerald-300 dark:border-emerald-800/60': isFinal,
             'app-panel border-rose-200 dark:border-rose-900 bg-rose-50/20 dark:bg-rose-900/10 opacity-60': isRejectedStatus,
             'app-panel border-blue-300 dark:border-blue-900 bg-blue-50/20 dark:bg-blue-900/10': isPublished,
+            'app-panel-subtle opacity-70': isSkipped,
             'app-panel': isPending,
         })}>
             <div className="flex items-center justify-between mb-4">
@@ -104,6 +107,7 @@ const PostCard = memo(function PostCard({
                     {isFinal && <span className="app-chip app-chip-success"><CheckCircle size={10} /> Aprovado</span>}
                     {isRejectedStatus && <span className="app-chip app-chip-danger"><XCircle size={10} /> Rejeitado</span>}
                     {isPublished && <span className="app-chip app-chip-info"><Globe size={10} /> Publicado</span>}
+                    {isSkipped && <span className="app-chip app-chip-warning">Ignorado nesta rodada</span>}
                     {post.scheduled_at && (
                         <span className="app-chip text-violet-700 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-800">
                             <Calendar size={10} />
@@ -285,15 +289,45 @@ export const ReviewPage = () => {
     const { data: postData, isLoading } = usePosts(undefined, campaignId);
     const posts = postData?.items;
     const { data: campaign } = useCampaign(campaignId!);
-    const { approvePost, isApproving } = usePostActions();
-    const { redoPost, isRedoing } = usePostRedo();
+    const { approvePost, isApproving, approvingPostId } = usePostActions();
+    const { redoPost, isRedoing, redoingPostId } = usePostRedo();
     const publishPostMutation = usePublishPost();
     const { editPost, isEditing } = useEditPost();
 
-    const handleApprove = useCallback((id: string) => { approvePost(id); }, [approvePost]);
-    const handleRedo = useCallback((id: string, instruction: string) => {
-        redoPost(id, instruction);
-    }, [redoPost]);
+    const handleApprove = useCallback(async (id: string) => {
+        await approvePost(id);
+        const remaining = posts?.filter((p) =>
+            p.id !== id
+            && p.status !== 'FINAL'
+            && p.status !== 'SKIPPED'
+            && p.status !== 'REJECTED'
+            && p.status !== 'PUBLISHED',
+        ) ?? [];
+        if (campaignId && campaign?.status === 'AWAITING_REVIEW' && remaining.length === 0) {
+            try {
+                await api.post(`/api/v1/generate/${campaignId}/human`, { action: 'approve' });
+            } catch {
+                // PATCH already persisted the post; graph resume is best-effort.
+            }
+        }
+    }, [approvePost, posts, campaignId, campaign?.status]);
+    const handleRedo = useCallback(async (id: string, instruction: string) => {
+        const target = posts?.find((p) => p.id === id);
+        if (campaignId && campaign?.status === 'AWAITING_REVIEW' && target) {
+            try {
+                await api.post(`/api/v1/generate/${campaignId}/human`, {
+                    action: 'redo',
+                    platform: target.platform,
+                    feedback: instruction,
+                });
+                showSuccess('Conteúdo refeito com sua instrução.');
+                return;
+            } catch {
+                // fallback to per-post redo
+            }
+        }
+        await redoPost(id, instruction);
+    }, [redoPost, posts, campaignId, campaign?.status]);
     const handlePublish = useCallback((id: string) => {
         publishPostMutation.mutate(id, {
             onSuccess: () => showSuccess('Post publicado com sucesso!'),
@@ -392,8 +426,8 @@ export const ReviewPage = () => {
                                             onPublish={handlePublish}
                                             onEditContent={handleEditContent}
                                             onEditSchedule={handleEditSchedule}
-                                            isApproving={isApproving}
-                                            isRedoing={isRedoing}
+                                            isApproving={isApproving && approvingPostId === post.id}
+                                            isRedoing={isRedoing && redoingPostId === post.id}
                                             isPublishing={publishPostMutation.isPending}
                                             isEditing={isEditing}
                                         />

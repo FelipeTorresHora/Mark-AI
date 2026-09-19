@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from src.database import get_db
-from src.dependencies.auth import get_current_user, get_user_from_token_query
+from src.dependencies.auth import get_current_user, get_user_for_sse
+from src.services.rate_limit import RateLimitExceeded, check_rate_limit
 from src.models.campaign import Campaign
 from src.models.post import Post
 from src.models.user import User
@@ -69,9 +70,9 @@ def start_generation(
 def stream_generation(
     campaign_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_token_query),
+    current_user: User = Depends(get_user_for_sse),
 ):
-    """SSE endpoint. Auth via ?token= query param (EventSource cannot send headers)."""
+    """SSE endpoint. Auth via Authorization Bearer (preferred) or ?token= fallback."""
     try:
         uuid.UUID(campaign_id)
     except ValueError:
@@ -120,6 +121,16 @@ async def human_review(
             detail=f"Campanha não está aguardando revisão (status={campaign.status})",
         )
 
+    if body.action == "redo":
+        try:
+            check_rate_limit(
+                f"human-redo:{current_user.id}",
+                max_hits=8,
+                window_seconds=600,
+            )
+        except RateLimitExceeded as exc:
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
+
     try:
         campaign, posts, awaiting = await apply_human_review(
             db,
@@ -127,7 +138,7 @@ async def human_review(
             action=body.action,
             platform=body.platform.upper() if body.platform else None,
             feedback=body.feedback,
-            langsmith_run_id=body.langsmith_run_id,
+            langsmith_run_id=None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

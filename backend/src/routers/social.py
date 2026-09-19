@@ -1,4 +1,5 @@
 """Social account OAuth connect/disconnect and post publishing."""
+import re
 from datetime import UTC, datetime, timezone
 from urllib.parse import urlencode, urlparse
 
@@ -24,6 +25,34 @@ from src.services.x_publish import get_active_x_account, publish_x_post_record
 
 router = APIRouter(prefix="/api/v1/social", tags=["social"])
 
+_OAUTH_ERROR_MAX_LEN = 180
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f]")
+
+
+def _sanitize_oauth_error(raw: str | None) -> str:
+    text = _CONTROL_CHARS.sub(" ", raw or "")
+    text = " ".join(text.split())
+    if not text:
+        return "Falha no OAuth"
+    return text[:_OAUTH_ERROR_MAX_LEN]
+
+
+def _is_allowed_frontend_origin(origin: str | None) -> bool:
+    if not origin:
+        return False
+    allowed_origins = {item.strip() for item in settings.allowed_origins.split(",") if item.strip()}
+    if origin in allowed_origins:
+        return True
+    regex = settings.allowed_origin_regex
+    if regex and re.fullmatch(regex, origin):
+        return True
+    return False
+
+
+def _safe_frontend_origin(origin: str | None) -> str | None:
+    return origin if _is_allowed_frontend_origin(origin) else None
+
+
 _OAUTH_ALLOWED_HOSTS = {
     "X": {"twitter.com", "x.com"},
     "LINKEDIN": {"www.linkedin.com", "linkedin.com"},
@@ -39,8 +68,9 @@ def _frontend_settings_redirect(
 ) -> RedirectResponse:
     query = urlencode(params)
     destination = path or "/configuracoes"
+    origin = _safe_frontend_origin(frontend_origin) or settings.frontend_url
     return RedirectResponse(
-        f"{frontend_origin or settings.frontend_url}{destination}?{query}",
+        f"{origin}{destination}?{query}",
         status_code=status.HTTP_302_FOUND,
     )
 
@@ -66,21 +96,7 @@ def _validate_oauth_url(url: str, provider: str) -> str:
 
 def _get_frontend_origin(request: Request) -> str | None:
     origin = request.headers.get("origin")
-    if not origin:
-        return None
-
-    allowed_origins = {item.strip() for item in settings.allowed_origins.split(",") if item.strip()}
-    if origin in allowed_origins:
-        return origin
-
-    regex = settings.allowed_origin_regex
-    if regex:
-        import re
-
-        if re.fullmatch(regex, origin):
-            return origin
-
-    return None
+    return _safe_frontend_origin(origin)
 
 
 def _build_x_authorization_url(user_id: str, frontend_origin: str | None = None) -> str:
@@ -151,7 +167,7 @@ def callback_x(
     db: Session = Depends(get_db),
 ):
     if error:
-        detail = error_description or error
+        detail = _sanitize_oauth_error(error_description or error)
         return _frontend_settings_redirect(error=detail, provider="x", frontend_origin=None)
     if not code or not state:
         raise HTTPException(status_code=400, detail="Callback do X incompleto")
@@ -229,7 +245,7 @@ def callback_linkedin(
     db: Session = Depends(get_db),
 ):
     if error:
-        detail = error_description or error
+        detail = _sanitize_oauth_error(error_description or error)
         return _frontend_settings_redirect(
             error=detail,
             provider="linkedin",
@@ -312,7 +328,7 @@ def callback_instagram(
     db: Session = Depends(get_db),
 ):
     if error:
-        detail = error_description or error
+        detail = _sanitize_oauth_error(error_description or error)
         return _frontend_instagram_redirect(
             error=detail,
             provider="instagram",
@@ -335,18 +351,24 @@ def callback_instagram(
         )
 
     user_access_token = token_data["access_token"]
-    expires_in = token_data.get("expires_in")
-    page_token_is_long_lived = False
     try:
         long_lived = oauth_instagram.exchange_long_lived_token(user_access_token)
-        user_access_token = long_lived.get("access_token", user_access_token)
-        expires_in = long_lived.get("expires_in", expires_in)
-        page_token_is_long_lived = True
+        user_access_token = long_lived.get("access_token") or user_access_token
     except Exception:
-        pass
+        return _frontend_instagram_redirect(
+            error="Não foi possível obter um token duradouro do Instagram. Reconecte a conta.",
+            provider="instagram",
+            frontend_origin=parsed.get("frontend_origin"),
+        )
 
     try:
         user_info = oauth_instagram.get_user_info(user_access_token)
+    except ValueError as exc:
+        return _frontend_instagram_redirect(
+            error=_sanitize_oauth_error(str(exc)),
+            provider="instagram",
+            frontend_origin=parsed.get("frontend_origin"),
+        )
     except Exception:
         return _frontend_instagram_redirect(
             error="Falha ao obter conta Instagram Business/Creator",
@@ -354,9 +376,14 @@ def callback_instagram(
             frontend_origin=parsed.get("frontend_origin"),
         )
 
-    page_access_token = user_info.get("page_access_token") or user_access_token
-    # Page tokens derived from a long-lived user token do not expire by time.
-    stored_expires_in = None if page_token_is_long_lived else expires_in
+    page_access_token = user_info.get("page_access_token")
+    if not page_access_token:
+        return _frontend_instagram_redirect(
+            error="A Página do Facebook não retornou um Page token. Reconecte com uma conta Business.",
+            provider="instagram",
+            frontend_origin=parsed.get("frontend_origin"),
+        )
+    stored_expires_in = None
 
     _upsert_social_account(
         db=db,

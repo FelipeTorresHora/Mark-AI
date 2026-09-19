@@ -1,5 +1,5 @@
 export type Platform = "X" | "LINKEDIN" | "INSTAGRAM";
-export type PostStatus = "DRAFT" | "UNDER_REVIEW" | "APPROVED" | "REJECTED" | "FINAL" | "PUBLISHED";
+export type PostStatus = "DRAFT" | "UNDER_REVIEW" | "APPROVED" | "REJECTED" | "FINAL" | "PUBLISHED" | "SKIPPED";
 export type PublishStatus = "pending" | "processing" | "published" | "failed" | "canceled";
 export type AppPhase = "BRIEFING" | "STRATEGY" | "GENERATION" | "REVIEW";
 
@@ -72,7 +72,7 @@ export interface Post {
 export interface CampaignSummary {
     id: string;
     topic: string;
-    status: "PENDING" | "GENERATING" | "DONE" | "FAILED";
+    status: "PENDING" | "GENERATING" | "AWAITING_REVIEW" | "DONE" | "FAILED";
     post_count: number;
     created_at: string;
 }

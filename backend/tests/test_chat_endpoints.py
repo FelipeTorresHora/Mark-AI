@@ -102,7 +102,7 @@ def test_chat_briefing_rejects_empty_message(client, user_factory, auth_headers)
     assert response.status_code == 422
 
 
-def test_chat_briefing_returns_503_when_llm_unavailable(client, user_factory, auth_headers):
+def test_chat_briefing_returns_503_when_llm_unavailable(client, user_factory, auth_headers, db_session):
     user = user_factory()
     from src.services.chat_cmo import CmoChatError
 
@@ -117,3 +117,4 @@ def test_chat_briefing_returns_503_when_llm_unavailable(client, user_factory, au
         )
     assert response.status_code == 503
     assert "indisponível" in response.json()["detail"].lower()
+    assert db_session.query(ChatSession).filter(ChatSession.user_id == user.id).count() == 0

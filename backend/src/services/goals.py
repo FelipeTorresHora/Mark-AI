@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.models.campaign import Campaign
@@ -164,7 +165,10 @@ def ensure_user_goals(db: Session, user_id) -> list[UserGoal]:
 
     for key in missing:
         db.add(UserGoal(user_id=user_id, goal_key=key))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
     return db.query(UserGoal).filter(UserGoal.user_id == user_id).all()
 
 

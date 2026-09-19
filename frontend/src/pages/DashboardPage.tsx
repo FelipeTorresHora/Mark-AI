@@ -12,6 +12,7 @@ import { cn } from '../lib/utils';
 const STATUS_CONFIG = {
     PENDING: { label: 'Pendente', color: 'app-chip app-chip-neutral', icon: Clock },
     GENERATING: { label: 'Gerando...', color: 'app-chip app-chip-info', icon: Clock },
+    AWAITING_REVIEW: { label: 'Em revisão', color: 'app-chip app-chip-warning', icon: Clock },
     DONE: { label: 'Concluída', color: 'app-chip app-chip-success', icon: CheckCircle },
     FAILED: { label: 'Erro', color: 'app-chip app-chip-danger', icon: AlertCircle },
 };

@@ -7,6 +7,7 @@ import { useXIntegrationStatus } from '../hooks/useXIntegration';
 import { EditPostModal } from '../components/posts/EditPostModal';
 import { Pagination } from '../components/common/Pagination';
 import { Button } from '../components/common/Button';
+import { useLiveNowMs } from '../hooks/useLiveNowMs';
 import { cn, formatScheduledAt, isDatetimeLocalBeforeNow } from '../lib/utils';
 import { CheckCircle, XCircle, Pencil, Calendar, Twitter, Linkedin, FileText, X as XIcon, MoreHorizontal, Send, Clock } from 'lucide-react';
 import type { PostStatus, Platform } from '../types';
@@ -22,6 +23,7 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
     REJECTED: 'Rejeitado',
     FINAL: 'Final',
     PUBLISHED: 'Publicado',
+    SKIPPED: 'Ignorado',
 };
 
 const STATUS_COLORS: Partial<Record<PostStatus, string>> = {
@@ -29,6 +31,7 @@ const STATUS_COLORS: Partial<Record<PostStatus, string>> = {
     UNDER_REVIEW: 'app-chip app-chip-warning',
     APPROVED: 'app-chip app-chip-info',
     FINAL: 'app-chip app-chip-success',
+    SKIPPED: 'app-chip app-chip-warning',
     PUBLISHED: 'app-chip app-chip-info',
 };
 
@@ -215,7 +218,7 @@ function PostRowCard({ post, onEdit, onApprove, onReject, onCancel, isApproving,
 function XComposer() {
     const [content, setContent] = useState('');
     const [scheduledAt, setScheduledAt] = useState('');
-    const [scheduleNowMs] = useState(() => Date.now());
+    const scheduleNowMs = useLiveNowMs();
     const { data: xStatus } = useXIntegrationStatus();
     const publishNow = usePublishXPost();
     const schedulePost = useScheduleXPost();

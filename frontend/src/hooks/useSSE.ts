@@ -96,7 +96,17 @@ function parseCampaignId(endpoint: string | null): string | null {
     return match?.[1] ?? null;
 }
 
-function applyPacket(prev: SSEState, packet: GenerationEvent): SSEState {
+function tokenFromEndpoint(endpoint: string | null): string | null {
+    if (!endpoint) return null;
+    try {
+        return new URL(endpoint).searchParams.get('token');
+    } catch {
+        const match = endpoint.match(/[?&]token=([^&]+)/);
+        return match ? decodeURIComponent(match[1]) : null;
+    }
+}
+
+export function applyPacket(prev: SSEState, packet: GenerationEvent): SSEState {
     const events = [...prev.events, packet];
     const platformProgress = {
         X: { ...prev.platformProgress.X },
@@ -158,12 +168,45 @@ async function refreshAccessTokenForSse(): Promise<string | null> {
     }
 }
 
-async function pollCampaignTerminal(campaignId: string): Promise<boolean> {
+async function pollCampaignTerminal(campaignId: string): Promise<string | null> {
     try {
         const res = await api.get<{ status: string }>(`/api/v1/campaigns/${campaignId}`);
-        return TERMINAL_CAMPAIGN_STATUSES.has(res.data.status);
+        return TERMINAL_CAMPAIGN_STATUSES.has(res.data.status) ? res.data.status : null;
     } catch {
-        return false;
+        return null;
+    }
+}
+
+function resolveAccessToken(endpoint: string | null): string | null {
+    return useAppStore.getState().accessToken || tokenFromEndpoint(endpoint);
+}
+
+async function readSseStream(
+    response: Response,
+    onPacket: (packet: GenerationEvent) => void,
+    signal: AbortSignal,
+): Promise<void> {
+    const reader = response.body?.getReader();
+    if (!reader) return;
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (!signal.aborted) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+            const dataLine = part.split('\n').find((line) => line.startsWith('data:'));
+            if (!dataLine) continue;
+            const raw = dataLine.slice(5).trim();
+            if (!raw) continue;
+            try {
+                onPacket(JSON.parse(raw) as GenerationEvent);
+            } catch {
+                // ignore malformed packets
+            }
+        }
     }
 }
 
@@ -173,8 +216,10 @@ export function useSSE(endpoint: string | null): SSEState {
     const [activeStreamKey, setActiveStreamKey] = useState(streamKey);
     const completedRef = useRef(false);
     const reconnectAttemptsRef = useRef(0);
+    const recoveringRef = useRef(false);
     const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const endpointRef = useRef(endpoint);
+    const abortRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
         endpointRef.current = endpoint;
@@ -195,6 +240,7 @@ export function useSSE(endpoint: string | null): SSEState {
     useEffect(() => {
         completedRef.current = false;
         reconnectAttemptsRef.current = 0;
+        recoveringRef.current = false;
         clearErrorTimer();
     }, [activeStreamKey, clearErrorTimer]);
 
@@ -202,14 +248,14 @@ export function useSSE(endpoint: string | null): SSEState {
         const initialEndpoint = endpointRef.current;
         if (!streamKey || !initialEndpoint) return;
 
-        let es: EventSource | null = new EventSource(initialEndpoint);
         let disposed = false;
+        let currentAbort: AbortController | null = null;
 
         const scheduleTerminalError = (message: string) => {
             clearErrorTimer();
             errorTimerRef.current = setTimeout(() => {
                 if (disposed || completedRef.current) return;
-                setState(prev => ({
+                setState((prev) => ({
                     ...prev,
                     isConnected: false,
                     error: message,
@@ -217,106 +263,111 @@ export function useSSE(endpoint: string | null): SSEState {
             }, ERROR_DEBOUNCE_MS);
         };
 
-        const connectWithUrl = (url: string) => {
+        const handlePacket = (packet: GenerationEvent) => {
             if (disposed) return;
-            es?.close();
-            es = new EventSource(url);
-            wireEventSource(es);
+            if (completedRef.current && packet.event !== 'generation_complete') return;
+            if (packet.event === 'error' && !packet.platform && packet.data.message) {
+                completedRef.current = true;
+                currentAbort?.abort();
+                setState((prev) => ({
+                    ...applyPacket(prev, packet),
+                    error: packet.data.message,
+                    isConnected: false,
+                }));
+                return;
+            }
+            setState((prev) => applyPacket(prev, packet));
+            if (packet.event === 'generation_complete') {
+                completedRef.current = true;
+                clearErrorTimer();
+                currentAbort?.abort();
+            }
+        };
+
+        const connect = async () => {
+            if (disposed || completedRef.current) return;
+            const url = sseStreamKey(endpointRef.current);
+            const token = resolveAccessToken(endpointRef.current);
+            if (!url || !token) {
+                scheduleTerminalError('Sessão expirada. Recarregue a página.');
+                return;
+            }
+            currentAbort?.abort();
+            const abort = new AbortController();
+            currentAbort = abort;
+            abortRef.current = abort;
+            try {
+                const response = await fetch(url, {
+                    headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
+                    credentials: 'include',
+                    signal: abort.signal,
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                reconnectAttemptsRef.current = 0;
+                recoveringRef.current = false;
+                clearErrorTimer();
+                setState((prev) => ({ ...prev, isConnected: true, error: null }));
+                await readSseStream(response, handlePacket, abort.signal);
+            } catch {
+                if (disposed || completedRef.current || abort.signal.aborted) return;
+                setState((prev) => ({ ...prev, isConnected: false }));
+                void tryRecoverConnection();
+            }
         };
 
         const tryRecoverConnection = async () => {
-            if (disposed || completedRef.current) return;
+            if (disposed || completedRef.current || recoveringRef.current) return;
+            recoveringRef.current = true;
 
             const campaignId = parseCampaignId(endpointRef.current);
-            if (campaignId && (await pollCampaignTerminal(campaignId))) {
+            const terminalStatus = campaignId ? await pollCampaignTerminal(campaignId) : null;
+            if (terminalStatus) {
                 completedRef.current = true;
                 clearErrorTimer();
-                setState(prev => ({
-                    ...prev,
+                const completePacket: GenerationEvent = {
+                    event: 'generation_complete',
+                    platform: null,
+                    data: {
+                        campaign_id: campaignId || '',
+                        awaiting_review: terminalStatus === 'AWAITING_REVIEW',
+                        resumed: true,
+                    },
+                };
+                setState((prev) => ({
+                    ...applyPacket(prev, completePacket),
                     isComplete: true,
                     isConnected: false,
-                    error: null,
+                    error: terminalStatus === 'FAILED' ? 'A geração falhou.' : null,
                 }));
-                es?.close();
+                recoveringRef.current = false;
                 return;
             }
 
             if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+                recoveringRef.current = false;
                 scheduleTerminalError('Conexão SSE perdida. A geração pode ainda estar em andamento — recarregue a página.');
-                es?.close();
                 return;
             }
 
             reconnectAttemptsRef.current += 1;
             const freshToken = await refreshAccessTokenForSse();
+            recoveringRef.current = false;
             if (disposed || completedRef.current) return;
-
-            if (freshToken && campaignId) {
-                const base = sseStreamKey(endpointRef.current);
-                if (base) {
-                    connectWithUrl(`${base}?token=${encodeURIComponent(freshToken)}`);
-                    return;
-                }
+            if (freshToken) {
+                void connect();
+                return;
             }
-
             scheduleTerminalError('Conexão SSE perdida');
         };
 
-        const wireEventSource = (source: EventSource) => {
-            source.onopen = () => {
-                reconnectAttemptsRef.current = 0;
-                clearErrorTimer();
-                setState(prev => ({ ...prev, isConnected: true, error: null }));
-            };
-
-            source.onmessage = (e) => {
-                try {
-                    const packet: GenerationEvent = JSON.parse(e.data);
-                    if (packet.event === 'error' && !packet.platform && packet.data.message) {
-                        completedRef.current = true;
-                        source.close();
-                        setState(prev => ({
-                            ...applyPacket(prev, packet),
-                            error: packet.data.message,
-                            isConnected: false,
-                        }));
-                        return;
-                    }
-
-                    setState(prev => applyPacket(prev, packet));
-
-                    if (packet.event === 'generation_complete') {
-                        completedRef.current = true;
-                        clearErrorTimer();
-                        source.close();
-                    }
-                } catch {
-                    // ignorar pacotes malformados
-                }
-            };
-
-            source.onerror = () => {
-                if (completedRef.current) {
-                    source.close();
-                    return;
-                }
-
-                setState(prev => ({ ...prev, isConnected: false }));
-
-                if (source.readyState === EventSource.CONNECTING) {
-                    return;
-                }
-
-                void tryRecoverConnection();
-            };
-        };
-
-        wireEventSource(es);
+        void connect();
 
         return () => {
             disposed = true;
             clearErrorTimer();
-            es?.close();
+            currentAbort?.abort();
         };
     }, [streamKey, clearErrorTimer]);
 

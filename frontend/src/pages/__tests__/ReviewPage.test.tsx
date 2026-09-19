@@ -15,6 +15,7 @@ vi.mock('../../hooks/usePostActions', () => ({
     usePostActions: () => ({
         approvePost: vi.fn(),
         isApproving: false,
+        approvingPostId: null,
     }),
 }));
 
@@ -22,6 +23,7 @@ vi.mock('../../hooks/usePostRedo', () => ({
     usePostRedo: () => ({
         redoPost: vi.fn(),
         isRedoing: false,
+        redoingPostId: null,
     }),
 }));
 

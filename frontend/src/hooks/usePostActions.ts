@@ -34,6 +34,7 @@ export function usePostActions() {
         approvePost: (id: string) => approveMutation.mutateAsync(id),
         rejectPost: (id: string) => rejectMutation.mutateAsync(id),
         isApproving: approveMutation.isPending,
+        approvingPostId: approveMutation.variables ?? null,
         isRejecting: rejectMutation.isPending,
     };
 }

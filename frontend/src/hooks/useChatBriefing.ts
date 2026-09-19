@@ -38,7 +38,7 @@ export function useChatBriefing() {
 
         let blocked = false;
         setState(prev => {
-            if (prev.isTyping) {
+            if (prev.isTyping || prev.done) {
                 blocked = true;
                 return prev;
             }

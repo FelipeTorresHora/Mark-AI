@@ -12,6 +12,7 @@ from langgraph.types import Command, interrupt
 
 from src.config import settings
 from src.services.content_generation import brand_guard, generate_post
+from src.services.prompt_safety import sanitize_redo_feedback
 
 EventEmitter = Callable[[str, str | None, dict[str, Any]], None]
 
@@ -24,8 +25,8 @@ class GenerationState(TypedDict, total=False):
     audience: str | None
     brand_context: dict
     platforms: list[str]
-    platform_contents: dict[str, str]
-    platform_post_ids: dict[str, str]
+    platform_contents: dict[str, list[str]]
+    platform_post_ids: dict[str, list[str]]
     attempt: int
     redo_platform: str | None
     redo_feedback: str | None
@@ -33,6 +34,30 @@ class GenerationState(TypedDict, total=False):
     user_id: str | None
     campaign_id: str | None
     errors: list[str]
+
+
+def normalize_post_ids(raw: dict | None) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = {}
+    for platform, value in (raw or {}).items():
+        if isinstance(value, list):
+            result[str(platform)] = [str(item) for item in value]
+        elif value:
+            result[str(platform)] = [str(value)]
+    return result
+
+
+def normalize_platform_contents(raw: dict | None) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = {}
+    for platform, value in (raw or {}).items():
+        if isinstance(value, list):
+            texts = [str(item) for item in value if item]
+        elif value:
+            texts = [str(value)]
+        else:
+            texts = []
+        if texts:
+            result[str(platform)] = texts
+    return result
 
 
 def _get_checkpointer():
@@ -50,9 +75,11 @@ def _get_checkpointer():
         _checkpointer = _checkpointer_cm.__enter__()
         _checkpointer.setup()
         return _checkpointer
-    except Exception:
-        _checkpointer = MemorySaver()
-        return _checkpointer
+    except Exception as exc:
+        raise RuntimeError(
+            "Checkpointer Postgres do LangGraph indisponível. "
+            "Resume humano não funciona com MemorySaver em serverless."
+        ) from exc
 
 
 def _ingest_objective(state: GenerationState) -> dict:
@@ -71,17 +98,23 @@ def _brand_context_node(state: GenerationState) -> dict:
     return {"brand_context": ctx}
 
 
-async def _generate_one_platform(
+async def _generate_one_variant(
     platform: str,
+    post_id: str,
+    variant_index: int,
+    platform_total: int,
     state: GenerationState,
     emitter: EventEmitter | None,
-) -> tuple[str, str | None]:
-    post_id = (state.get("platform_post_ids") or {}).get(platform, "")
+) -> tuple[str, int, str]:
     if emitter:
         emitter(
             "writer_start",
             platform,
-            {"post_id": post_id, "variant_index": 1, "platform_total": 1},
+            {
+                "post_id": post_id,
+                "variant_index": variant_index,
+                "platform_total": platform_total,
+            },
         )
     try:
         content = await asyncio.wait_for(
@@ -92,7 +125,7 @@ async def _generate_one_platform(
                 audience=state.get("audience"),
                 user_id=state.get("user_id"),
                 campaign_id=state.get("campaign_id"),
-                attempt=state.get("attempt") or 1,
+                attempt=(state.get("attempt") or 1) + variant_index - 1,
                 redo_feedback=state.get("redo_feedback")
                 if state.get("redo_platform") == platform
                 else None,
@@ -107,13 +140,16 @@ async def _generate_one_platform(
                 {
                     "post_id": post_id,
                     "content": guarded,
-                    "variant_index": 1,
-                    "platform_total": 1,
+                    "variant_index": variant_index,
+                    "platform_total": platform_total,
                 },
             )
-        return platform, guarded
+        return platform, variant_index, guarded
     except asyncio.TimeoutError:
-        message = f"Tempo esgotado ({settings.generation_timeout_seconds}s) ao gerar para {platform}."
+        message = (
+            f"Tempo esgotado ({settings.generation_timeout_seconds}s) "
+            f"ao gerar para {platform} (variante {variant_index})."
+        )
         if emitter:
             emitter(
                 "error",
@@ -121,11 +157,11 @@ async def _generate_one_platform(
                 {
                     "post_id": post_id,
                     "message": message,
-                    "variant_index": 1,
-                    "platform_total": 1,
+                    "variant_index": variant_index,
+                    "platform_total": platform_total,
                 },
             )
-        return platform, ""
+        return platform, variant_index, ""
     except Exception as exc:
         if emitter:
             emitter(
@@ -134,47 +170,68 @@ async def _generate_one_platform(
                 {
                     "post_id": post_id,
                     "message": str(exc),
-                    "variant_index": 1,
-                    "platform_total": 1,
+                    "variant_index": variant_index,
+                    "platform_total": platform_total,
                 },
             )
-        return platform, ""
+        return platform, variant_index, ""
 
 
 def _build_graph(emitter: EventEmitter | None = None):
     graph = StateGraph(GenerationState)
 
-    def generate_per_platform(state: GenerationState) -> dict:
+    async def generate_per_platform(state: GenerationState) -> dict:
         platforms = list(state.get("platforms") or [])
         if state.get("redo_platform"):
             platforms = [state["redo_platform"]]
 
-        async def _run_platforms() -> dict:
-            contents = dict(state.get("platform_contents") or {})
-            errors = list(state.get("errors") or [])
+        post_ids = normalize_post_ids(state.get("platform_post_ids"))
+        contents = normalize_platform_contents(state.get("platform_contents"))
+        errors = list(state.get("errors") or [])
 
-            for platform in platforms:
-                plat, text = await _generate_one_platform(platform, state, emitter)
-                if text:
-                    contents[plat] = text
-                else:
-                    errors.append(f"Falha ao gerar para {plat}")
+        jobs: list[tuple[str, str, int, int]] = []
+        for platform in platforms:
+            ids = post_ids.get(platform) or [""]
+            total = max(len(ids), 1)
+            for index, post_id in enumerate(ids, start=1):
+                jobs.append((platform, post_id, index, total))
 
-            return {
-                "platform_contents": contents,
-                "errors": errors,
-                "redo_platform": None,
-                "redo_feedback": None,
-                "attempt": (state.get("attempt") or 1) + (1 if state.get("redo_platform") else 0),
-            }
+        results = await asyncio.gather(
+            *[
+                _generate_one_variant(platform, post_id, index, total, state, emitter)
+                for platform, post_id, index, total in jobs
+            ]
+        )
 
-        return asyncio.run(_run_platforms())
+        by_platform: dict[str, list[tuple[int, str]]] = {}
+        for platform, index, text in results:
+            by_platform.setdefault(platform, []).append((index, text))
+
+        for platform, variants in by_platform.items():
+            variants.sort(key=lambda item: item[0])
+            texts = [text for _, text in variants if text]
+            if texts:
+                contents[platform] = texts
+            else:
+                errors.append(f"Falha ao gerar para {platform}")
+                contents.pop(platform, None)
+
+        return {
+            "platform_contents": contents,
+            "errors": errors,
+            "redo_platform": None,
+            "redo_feedback": None,
+            "attempt": (state.get("attempt") or 1) + (1 if state.get("redo_platform") else 0),
+        }
 
     def brand_guard_node(state: GenerationState) -> dict:
-        contents = {}
-        for platform, text in (state.get("platform_contents") or {}).items():
-            guarded, _ = brand_guard(platform, text, state.get("audience"))
-            contents[platform] = guarded
+        contents: dict[str, list[str]] = {}
+        for platform, texts in normalize_platform_contents(state.get("platform_contents")).items():
+            guarded_list = []
+            for text in texts:
+                guarded, _ = brand_guard(platform, text, state.get("audience"))
+                guarded_list.append(guarded)
+            contents[platform] = guarded_list
         return {"platform_contents": contents}
 
     def wait_human(state: GenerationState) -> dict:
@@ -185,10 +242,11 @@ def _build_graph(emitter: EventEmitter | None = None):
             }
         )
         action = payload.get("action") if isinstance(payload, dict) else "approve"
+        raw_feedback = payload.get("feedback") if isinstance(payload, dict) else None
         return {
             "human_action": action,
             "redo_platform": payload.get("platform") if isinstance(payload, dict) else None,
-            "redo_feedback": payload.get("feedback") if isinstance(payload, dict) else None,
+            "redo_feedback": sanitize_redo_feedback(raw_feedback) if raw_feedback else None,
         }
 
     def route_after_human(state: GenerationState) -> str:
@@ -222,7 +280,7 @@ async def run_until_review(
     objective: str,
     brand_context: dict,
     platforms: list[str],
-    platform_post_ids: dict[str, str],
+    platform_post_ids: dict[str, list[str]] | dict[str, str],
     audience: str | None,
     user_id: str | None,
     campaign_id: str | None,
@@ -234,7 +292,7 @@ async def run_until_review(
         "objective": objective,
         "brand_context": brand_context,
         "platforms": platforms,
-        "platform_post_ids": platform_post_ids,
+        "platform_post_ids": normalize_post_ids(platform_post_ids),
         "audience": audience,
         "user_id": user_id,
         "campaign_id": campaign_id,
@@ -242,7 +300,7 @@ async def run_until_review(
         "attempt": 1,
         "errors": [],
     }
-    result = await asyncio.to_thread(app.invoke, initial, config)
+    result = await app.ainvoke(initial, config)
     return result
 
 
@@ -256,8 +314,12 @@ async def resume_after_human(
 ) -> GenerationState:
     app = _build_graph(emitter)
     config = {"configurable": {"thread_id": thread_id}}
-    payload = {"action": action, "platform": platform, "feedback": feedback}
-    result = await asyncio.to_thread(app.invoke, Command(resume=payload), config)
+    payload = {
+        "action": action,
+        "platform": platform,
+        "feedback": sanitize_redo_feedback(feedback) if feedback else None,
+    }
+    result = await app.ainvoke(Command(resume=payload), config)
     return result
 
 
@@ -269,14 +331,14 @@ def _graph_config(thread_id: str) -> dict:
     return {"configurable": {"thread_id": thread_id}}
 
 
-def get_review_interrupt_contents(thread_id: str) -> dict[str, str] | None:
+def get_review_interrupt_contents(thread_id: str) -> dict[str, list[str]] | None:
     """Return platform contents when the graph is paused at human review, else None."""
     app = _build_graph(None)
     snap = app.get_state(_graph_config(thread_id))
     if not snap.interrupts:
         return None
-    contents = (snap.values or {}).get("platform_contents") or {}
-    return dict(contents) if contents else None
+    contents = normalize_platform_contents((snap.values or {}).get("platform_contents"))
+    return contents or None
 
 
 def graph_checkpoint_exists(thread_id: str) -> bool:
