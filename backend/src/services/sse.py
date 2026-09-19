@@ -12,6 +12,7 @@ from src.services.langgraph_pipeline import (
     get_review_interrupt_contents,
     graph_checkpoint_exists,
     new_thread_id,
+    normalize_platform_contents,
     run_until_review,
 )
 
@@ -61,15 +62,25 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
         .order_by(Post.created_at.asc(), Post.id.asc())
         .all()
     )
-    posts_by_platform: dict[str, Post] = {}
+    posts_by_platform: dict[str, list[Post]] = {}
     platform_totals: dict[str, int] = {}
     for post in posts:
+        posts_by_platform.setdefault(post.platform, []).append(post)
         platform_totals[post.platform] = platform_totals.get(post.platform, 0) + 1
-        if post.platform not in posts_by_platform:
-            posts_by_platform[post.platform] = post
 
     platforms = list(posts_by_platform.keys())
-    platform_post_ids = {p: str(posts_by_platform[p].id) for p in platforms}
+    platform_post_ids = {
+        platform: [str(post.id) for post in platform_posts]
+        for platform, platform_posts in posts_by_platform.items()
+    }
+    skipped_platforms: set[str] = set()
+    user_id = campaign.user_id
+    for platform in platforms:
+        skip_reason = (
+            platform_generation_block_reason(db, platform, user_id) if user_id else None
+        )
+        if skip_reason:
+            skipped_platforms.add(platform)
 
     plan_event = make_event(
         "generation_plan",
@@ -78,7 +89,7 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
     )
 
     async def finalize_from_contents(
-        contents: dict[str, str],
+        contents: dict,
         *,
         graph_error: str | None = None,
     ) -> str | None:
@@ -86,17 +97,27 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
         campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
         if not campaign:
             return "Campanha não encontrada"
+        normalized = normalize_platform_contents(contents)
         any_generated = False
-        for platform, post in posts_by_platform.items():
-            if platform in contents:
-                post.content = contents[platform]
-                post.status = "UNDER_REVIEW"
-                any_generated = True
-            elif graph_error:
-                post.status = "DRAFT"
+        for platform, platform_posts in posts_by_platform.items():
+            if platform in skipped_platforms:
+                for post in platform_posts:
+                    post.status = "SKIPPED"
+                continue
+            texts = normalized.get(platform) or []
+            for index, post in enumerate(platform_posts):
+                if index < len(texts) and texts[index]:
+                    post.content = texts[index]
+                    post.status = "UNDER_REVIEW"
+                    any_generated = True
+                elif graph_error:
+                    post.status = "DRAFT"
 
         if graph_error and any_generated:
             graph_error = None
+
+        if not any_generated and not graph_error:
+            graph_error = "Nenhuma plataforma gerou conteúdo nesta rodada."
 
         campaign.status = "AWAITING_REVIEW" if not graph_error else "FAILED"
         db.commit()
@@ -120,7 +141,7 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
     if graph_checkpoint_exists(thread_id):
         yield plan_event
         deadline = asyncio.get_running_loop().time() + KEEPALIVE_INTERVAL_SECONDS * 60
-        waited_contents: dict[str, str] | None = None
+        waited_contents: dict[str, list[str]] | None = None
         while asyncio.get_running_loop().time() < deadline:
             waited_contents = get_review_interrupt_contents(thread_id)
             if waited_contents is not None:
@@ -149,27 +170,25 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
     def emitter(event: str, platform: str | None, data: dict) -> None:
         loop.call_soon_threadsafe(events_queue.put_nowait, (event, platform, data))
 
-    audience = campaign.audience
-    user_id = campaign.user_id
-
     platforms_for_graph: list[str] = []
     for platform in platforms:
-        skip_reason = (
-            platform_generation_block_reason(db, platform, user_id) if user_id else None
-        )
-        if skip_reason:
-            post_id = platform_post_ids.get(platform, "")
-            total = platform_totals.get(platform, 1)
-            emitter(
-                "platform_skipped",
-                platform,
-                {
-                    "post_id": post_id,
-                    "message": skip_reason,
-                    "variant_index": 1,
-                    "platform_total": total,
-                },
+        if platform in skipped_platforms:
+            skip_reason = (
+                platform_generation_block_reason(db, platform, user_id) if user_id else "Ignorado."
             )
+            ids = platform_post_ids.get(platform) or [""]
+            total = platform_totals.get(platform, len(ids) or 1)
+            for index, post_id in enumerate(ids, start=1):
+                emitter(
+                    "platform_skipped",
+                    platform,
+                    {
+                        "post_id": post_id,
+                        "message": skip_reason,
+                        "variant_index": index,
+                        "platform_total": total,
+                    },
+                )
             continue
         platforms_for_graph.append(platform)
 
@@ -189,7 +208,7 @@ async def generation_stream(campaign_id: str, db: Session) -> AsyncGenerator[str
                 platform_post_ids={
                     p: platform_post_ids[p] for p in platforms_for_graph
                 },
-                audience=audience,
+                audience=campaign.audience,
                 user_id=str(campaign.user_id) if campaign.user_id else None,
                 campaign_id=str(campaign.id),
                 emitter=emitter,

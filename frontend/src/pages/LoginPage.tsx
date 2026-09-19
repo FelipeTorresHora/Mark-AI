@@ -2,10 +2,11 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { showError } from '../lib/toast';
+import { isOnboardingComplete } from '../lib/onboarding';
 
 const schema = z.object({
     email: z.email('E-mail inválido'),
@@ -17,12 +18,24 @@ type FormData = z.infer<typeof schema>;
 const inputClass = "app-input text-sm px-3 py-2 rounded-[10px]";
 
 export function LoginPage() {
-    const { login } = useAuth();
+    const { login, isAuthenticated, isAuthLoading, user } = useAuth();
     const {
         register,
         handleSubmit,
         formState: { errors, isSubmitting },
     } = useForm<FormData>({ resolver: zodResolver(schema) });
+
+    if (isAuthLoading) {
+        return (
+            <div className="min-h-screen app-shell flex items-center justify-center">
+                <Loader2 className="animate-spin text-primary-500" size={36} />
+            </div>
+        );
+    }
+
+    if (isAuthenticated && user) {
+        return <Navigate to={isOnboardingComplete(user.id) ? '/campanhas' : '/onboarding'} replace />;
+    }
 
     const onSubmit = async (data: FormData) => {
         try {

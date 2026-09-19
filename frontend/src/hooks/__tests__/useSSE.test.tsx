@@ -1,8 +1,31 @@
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import axios from 'axios';
 import { api } from '../../lib/api';
+import { useAppStore } from '../../store/useAppStore';
 import { useSSE, sseStreamKey } from '../useSSE';
+
+function sseResponse(packets: unknown[], { hang = false, fail = false } = {}) {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+            if (fail) {
+                controller.error(new Error('network'));
+                return;
+            }
+            for (const packet of packets) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(packet)}\n\n`));
+            }
+            if (!hang) {
+                controller.close();
+            }
+        },
+    });
+    return new Response(stream, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+    });
+}
 
 describe('sseStreamKey', () => {
     it('ignores token query param', () => {
@@ -13,66 +36,37 @@ describe('sseStreamKey', () => {
 });
 
 describe('useSSE', () => {
-    const MockEventSource = vi.fn(function EventSourceMock(url: string) {
-        return createMockES(url);
-    });
-
-    beforeAll(() => {
-        vi.stubGlobal('EventSource', MockEventSource);
+    beforeEach(() => {
+        vi.clearAllMocks();
+        useAppStore.getState().setAuth({ id: '1', email: 'a@b.c' }, 'store-token');
     });
 
     afterEach(() => {
         vi.useRealTimers();
         vi.restoreAllMocks();
-    });
-
-    function createMockES(url: string) {
-        let handler: ((e: MessageEvent) => void) | null = null;
-        let openHandler: ((e: Event) => void) | null = null;
-        let errorHandler: (() => void) | null = null;
-        return {
-            close: vi.fn(),
-            readyState: 1,
-            set onmessage(h: (e: MessageEvent) => void) { handler = h; },
-            set onerror(h: () => void) { errorHandler = h; },
-            set onopen(h: (e: Event) => void) { openHandler = h; },
-            _triggerMessage(data: unknown) {
-                handler?.({ data: JSON.stringify(data) } as MessageEvent);
-            },
-            _triggerOpen() {
-                openHandler?.({} as Event);
-            },
-            _triggerError(readyState = 2) {
-                Object.defineProperty(this, 'readyState', { value: readyState, configurable: true });
-                errorHandler?.();
-            },
-            url,
-        };
-    }
-
-    beforeEach(() => {
-        vi.clearAllMocks();
+        vi.unstubAllGlobals();
     });
 
     it('connects and receives events', async () => {
-        const { result } = renderHook(() => useSSE('http://test/stream?token=abc'));
-        const mockEs = MockEventSource.mock.results[0]?.value;
+        const fetchMock = vi.fn().mockResolvedValue(
+            sseResponse([
+                {
+                    event: 'writer_start',
+                    platform: 'X',
+                    data: { post_id: '1', variant_index: 1, platform_total: 3 },
+                },
+            ], { hang: true }),
+        );
+        vi.stubGlobal('fetch', fetchMock);
 
-        expect(MockEventSource).toHaveBeenCalledWith('http://test/stream?token=abc');
+        const { result } = renderHook(() => useSSE('http://test/stream'));
 
-        act(() => {
-            mockEs._triggerOpen();
+        await waitFor(() => {
+            expect(result.current.events).toHaveLength(1);
         });
-
-        act(() => {
-            mockEs._triggerMessage({
-                event: 'writer_start',
-                platform: 'X',
-                data: { post_id: '1', variant_index: 1, platform_total: 3 },
-            });
-        });
-
-        expect(result.current.events).toHaveLength(1);
+        expect(fetchMock).toHaveBeenCalled();
+        const init = fetchMock.mock.calls[0][1] as RequestInit;
+        expect((init.headers as Record<string, string>).Authorization).toBe('Bearer store-token');
         expect(result.current.events[0].event).toBe('writer_start');
         expect(result.current.platformStatus.X).toBe('writing');
         expect(result.current.platformProgress.X.started).toBe(1);
@@ -80,60 +74,49 @@ describe('useSSE', () => {
     });
 
     it('marks platform as done', async () => {
-        const { result } = renderHook(() => useSSE('http://test/stream?token=abc'));
-        const mockEs = MockEventSource.mock.results[0]?.value;
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue(
+                sseResponse([
+                    {
+                        event: 'writer_start',
+                        platform: 'X',
+                        data: { post_id: '1', variant_index: 1, platform_total: 1 },
+                    },
+                    {
+                        event: 'writer_done',
+                        platform: 'X',
+                        data: { post_id: '1', content: 'Test post', variant_index: 1, platform_total: 1 },
+                    },
+                ], { hang: true }),
+            ),
+        );
 
-        act(() => {
-            mockEs._triggerMessage({
-                event: 'writer_start',
-                platform: 'X',
-                data: { post_id: '1', variant_index: 1, platform_total: 1 },
-            });
+        const { result } = renderHook(() => useSSE('http://test/stream'));
+        await waitFor(() => {
+            expect(result.current.platformStatus.X).toBe('done');
         });
-
-        act(() => {
-            mockEs._triggerMessage({
-                event: 'writer_done',
-                platform: 'X',
-                data: { post_id: '1', content: 'Test post', variant_index: 1, platform_total: 1 },
-            });
-        });
-
-        expect(result.current.platformStatus.X).toBe('done');
         expect(result.current.platformProgress.X.done).toBe(1);
     });
 
-    it('detects generation complete and closes connection', async () => {
-        const { result } = renderHook(() => useSSE('http://test/stream?token=abc'));
-        const mockEs = MockEventSource.mock.results[0]?.value;
+    it('detects generation complete', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue(
+                sseResponse([
+                    {
+                        event: 'generation_complete',
+                        platform: null,
+                        data: { campaign_id: 'camp-1' },
+                    },
+                ]),
+            ),
+        );
 
-        act(() => {
-            mockEs._triggerMessage({
-                event: 'generation_complete',
-                platform: null,
-                data: { campaign_id: 'camp-1' },
-            });
+        const { result } = renderHook(() => useSSE('http://test/stream'));
+        await waitFor(() => {
+            expect(result.current.isComplete).toBe(true);
         });
-
-        expect(result.current.isComplete).toBe(true);
-        expect(result.current.error).toBeNull();
-        expect(mockEs.close).toHaveBeenCalled();
-    });
-
-    it('does not show lost connection after successful complete', async () => {
-        const { result } = renderHook(() => useSSE('http://test/stream?token=abc'));
-        const mockEs = MockEventSource.mock.results[0]?.value;
-
-        act(() => {
-            mockEs._triggerMessage({
-                event: 'generation_complete',
-                platform: null,
-                data: { campaign_id: 'camp-1' },
-            });
-            mockEs._triggerError();
-        });
-
-        expect(result.current.isComplete).toBe(true);
         expect(result.current.error).toBeNull();
     });
 
@@ -141,14 +124,13 @@ describe('useSSE', () => {
         vi.useFakeTimers();
         vi.spyOn(axios, 'post').mockRejectedValue(new Error('refresh failed'));
         vi.spyOn(api, 'get').mockRejectedValue(new Error('poll failed'));
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
 
         const { result } = renderHook(() =>
-            useSSE('http://test/api/v1/generate/camp-1/stream?token=abc'),
+            useSSE('http://test/api/v1/generate/camp-1/stream'),
         );
-        const mockEs = MockEventSource.mock.results[0]?.value;
 
         await act(async () => {
-            mockEs._triggerError(2);
             await Promise.resolve();
             await Promise.resolve();
             await Promise.resolve();
@@ -170,7 +152,10 @@ describe('useSSE', () => {
         expect(result.current.isComplete).toBe(false);
     });
 
-    it('does not open a new EventSource when only the token query changes', async () => {
+    it('does not reconnect when only the token query changes', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(sseResponse([], { hang: true }));
+        vi.stubGlobal('fetch', fetchMock);
+
         const { rerender } = renderHook(
             ({ url }) => useSSE(url),
             {
@@ -180,12 +165,14 @@ describe('useSSE', () => {
             },
         );
 
-        expect(MockEventSource).toHaveBeenCalledTimes(1);
+        await waitFor(() => {
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
 
         rerender({
             url: 'http://test/api/v1/generate/camp-1/stream?token=token-b',
         });
 
-        expect(MockEventSource).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 });

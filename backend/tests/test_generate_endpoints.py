@@ -127,16 +127,34 @@ def test_generation_stream_processes_multiple_posts(
 
     async def fake_run_until_review(**kwargs):
         emitter = kwargs.get("emitter")
+        post_ids = kwargs.get("platform_post_ids") or {}
         if emitter:
             for platform in kwargs.get("platforms", []):
-                emitter("writer_start", platform, {"post_id": "1", "variant_index": 1, "platform_total": 1})
-                emitter(
-                    "writer_done",
-                    platform,
-                    {"post_id": "1", "content": f"{platform} :: ok", "variant_index": 1, "platform_total": 1},
-                )
+                ids = post_ids.get(platform) or ["1"]
+                if isinstance(ids, str):
+                    ids = [ids]
+                total = len(ids)
+                for index, post_id in enumerate(ids, start=1):
+                    emitter(
+                        "writer_start",
+                        platform,
+                        {"post_id": post_id, "variant_index": index, "platform_total": total},
+                    )
+                    emitter(
+                        "writer_done",
+                        platform,
+                        {
+                            "post_id": post_id,
+                            "content": f"{platform} :: ok {index}",
+                            "variant_index": index,
+                            "platform_total": total,
+                        },
+                    )
         return {
-            "platform_contents": {p: f"{p} :: ok" for p in kwargs.get("platforms", [])},
+            "platform_contents": {
+                p: [f"{p} :: ok {i + 1}" for i in range(len(post_ids.get(p) or ["1"]))]
+                for p in kwargs.get("platforms", [])
+            },
             "__interrupt__": [object()],
         }
 
@@ -152,10 +170,13 @@ def test_generation_stream_processes_multiple_posts(
         db_session.refresh(post)
 
     assert any('"event": "generation_plan"' in event for event in events)
-    assert len([event for event in events if '"event": "writer_done"' in event]) == 2
+    assert len([event for event in events if '"event": "writer_done"' in event]) == 5
     assert campaign.status == "AWAITING_REVIEW"
     assert x_posts[0].status == "UNDER_REVIEW"
+    assert x_posts[1].status == "UNDER_REVIEW"
     assert linkedin_posts[0].status == "UNDER_REVIEW"
+    assert linkedin_posts[1].status == "UNDER_REVIEW"
+    assert linkedin_posts[2].status == "UNDER_REVIEW"
 
 
 def test_generation_stream_resumes_terminal_campaign_without_rerunning_graph(
@@ -284,6 +305,52 @@ def test_generation_stream_skips_instagram_without_account(
     monkeypatch.setattr("src.services.sse.run_until_review", fake_run_until_review)
 
     events = asyncio.run(collect_events())
+    db_session.refresh(campaign)
+    ig_post = db_session.query(Post).filter(Post.campaign_id == campaign.id, Post.platform == "INSTAGRAM").one()
+    x_post = db_session.query(Post).filter(Post.campaign_id == campaign.id, Post.platform == "X").one()
+    assert ig_post.status == "SKIPPED"
+    assert x_post.status == "UNDER_REVIEW"
+    assert campaign.status == "AWAITING_REVIEW"
     assert any('"event": "platform_skipped"' in e and "INSTAGRAM" in e for e in events)
     assert any('"event": "writer_done"' in e and "X" in e for e in events)
     assert any('"event": "generation_complete"' in e for e in events)
+
+
+def test_generation_stream_fails_when_every_platform_is_skipped(
+    db_session,
+    user_factory,
+    campaign_factory,
+    post_factory,
+    monkeypatch,
+):
+    user = user_factory()
+    campaign = campaign_factory(user)
+    post_factory(campaign, platform="INSTAGRAM", content=None)
+
+    monkeypatch.setattr(
+        "src.services.generation_platforms.settings.instagram_app_id",
+        "app-id",
+    )
+    monkeypatch.setattr(
+        "src.services.generation_platforms.settings.instagram_app_secret",
+        "secret",
+    )
+
+    ran = {"value": False}
+
+    async def should_not_run(**kwargs):
+        ran["value"] = True
+        return {}
+
+    monkeypatch.setattr("src.services.sse.run_until_review", should_not_run)
+
+    async def collect_events():
+        return [event async for event in generation_stream(str(campaign.id), db_session)]
+
+    events = asyncio.run(collect_events())
+    db_session.refresh(campaign)
+    ig_post = db_session.query(Post).filter(Post.campaign_id == campaign.id).one()
+    assert not ran["value"]
+    assert ig_post.status == "SKIPPED"
+    assert campaign.status == "FAILED"
+    assert any('"awaiting_review": false' in e for e in events)

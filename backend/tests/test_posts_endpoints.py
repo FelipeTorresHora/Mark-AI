@@ -218,8 +218,8 @@ def test_redo_post_regenerates_with_instruction(
     campaign = campaign_factory(user, topic="Crescer no LinkedIn")
     post = post_factory(campaign, status="APPROVED", content="Versão antiga", platform="LINKEDIN")
 
-    async def fake_generate(platform, topic, brand_context):
-        assert "Instruções do usuário" in topic
+    async def fake_generate(platform, topic, brand_context, **kwargs):
+        assert kwargs.get("redo_feedback")
         return "Versão nova com tom mais direto"
 
     monkeypatch.setattr("src.routers.posts.generate_post", fake_generate)
@@ -234,7 +234,7 @@ def test_redo_post_regenerates_with_instruction(
     payload = response.json()
     assert payload["content"] == "Versão nova com tom mais direto"
     assert payload["feedback"] == "Tom mais direto e menos formal"
-    assert payload["status"] == "APPROVED"
+    assert payload["status"] == "UNDER_REVIEW"
     assert payload["attempt_count"] >= 1
 
 

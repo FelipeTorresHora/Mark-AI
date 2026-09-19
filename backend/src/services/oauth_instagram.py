@@ -28,9 +28,9 @@ def get_authorization_url(state: str) -> str:
 
 def exchange_code_for_token(code: str) -> dict:
     with httpx.Client() as client:
-        resp = client.get(
+        resp = client.post(
             graph_url("oauth/access_token"),
-            params={
+            data={
                 "client_id": settings.instagram_app_id,
                 "client_secret": settings.instagram_app_secret,
                 "redirect_uri": settings.instagram_redirect_uri,
@@ -44,9 +44,9 @@ def exchange_code_for_token(code: str) -> dict:
 def exchange_long_lived_token(short_lived_token: str) -> dict:
     """Exchange a short-lived user token for a long-lived token (~60 days)."""
     with httpx.Client() as client:
-        resp = client.get(
+        resp = client.post(
             graph_url("oauth/access_token"),
-            params={
+            data={
                 "grant_type": "fb_exchange_token",
                 "client_id": settings.instagram_app_id,
                 "client_secret": settings.instagram_app_secret,
@@ -74,6 +74,7 @@ def get_user_info(access_token: str) -> dict:
             "fields": "id,name,access_token,tasks,instagram_business_account{id,username}",
             "access_token": access_token,
         }
+        matches: list[dict[str, Any]] = []
         while url:
             pages_resp = client.get(url, params=params)
             pages_resp.raise_for_status()
@@ -86,19 +87,35 @@ def get_user_info(access_token: str) -> dict:
                     continue
                 if not page_can_publish(page.get("tasks")):
                     continue
-                return {
-                    "id": str(ig_id),
-                    "username": ig_account.get("username"),
-                    "page_id": str(page.get("id") or ""),
-                    "page_access_token": str(page_token),
-                }
+                matches.append(
+                    {
+                        "id": str(ig_id),
+                        "username": ig_account.get("username"),
+                        "page_id": str(page.get("id") or ""),
+                        "page_name": page.get("name") or "",
+                        "page_access_token": str(page_token),
+                        "tasks": page.get("tasks") or [],
+                    }
+                )
             next_url = (payload.get("paging") or {}).get("next")
             url = str(next_url) if next_url else None
             params = None
 
-        raise ValueError(
-            "Nenhuma conta Instagram Business/Creator vinculada às páginas do Facebook."
-        )
+        if not matches:
+            raise ValueError(
+                "Nenhuma conta Instagram Business/Creator vinculada às páginas do Facebook."
+            )
+        if len(matches) > 1:
+            names = ", ".join(
+                f"{item.get('page_name') or item.get('username') or item['page_id']}"
+                for item in matches
+            )
+            raise ValueError(
+                "Há mais de uma Página com Instagram publicável. "
+                "Use um login do Facebook com uma única Página ou desconecte as demais. "
+                f"Encontradas: {names}."
+            )
+        return matches[0]
 
 
 def publish_post(

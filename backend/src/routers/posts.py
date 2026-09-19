@@ -11,17 +11,20 @@ from src.models.post import Post
 from src.models.user import User
 from src.schemas.post import PostResponse, PostPatchBody, PostRedoBody
 from src.services.content_generation import generate_post
+from src.services.prompt_safety import sanitize_redo_feedback
+from src.services.rate_limit import RateLimitExceeded, check_rate_limit
 from src.schemas.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
 VALID_TRANSITIONS = {
-    "DRAFT": ["APPROVED", "REJECTED"],
+    "DRAFT": ["APPROVED", "REJECTED", "SKIPPED"],
     "APPROVED": ["FINAL", "REJECTED", "PUBLISHED"],
-    "UNDER_REVIEW": ["APPROVED", "REJECTED"],
+    "UNDER_REVIEW": ["APPROVED", "REJECTED", "FINAL"],
     "REJECTED": [],
     "FINAL": [],
     "PUBLISHED": [],
+    "SKIPPED": [],
 }
 
 
@@ -158,19 +161,31 @@ async def redo_post(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campanha não encontrada")
 
-    brand_context = campaign.brand_context or {}
-    topic_with_feedback = (
-        f"{campaign.topic}\n\nInstruções do usuário para refazer: {body.instruction.strip()}"
-    )
     try:
-        content = await generate_post(post.platform, topic_with_feedback, brand_context)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Falha ao refazer conteúdo: {exc}") from exc
+        check_rate_limit(f"post-redo:{current_user.id}", max_hits=8, window_seconds=600)
+    except RateLimitExceeded as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+
+    instruction = sanitize_redo_feedback(body.instruction)
+    brand_context = campaign.brand_context or {}
+    try:
+        content = await generate_post(
+            post.platform,
+            campaign.objective or campaign.topic,
+            brand_context,
+            audience=campaign.audience,
+            user_id=str(current_user.id),
+            campaign_id=str(campaign.id),
+            attempt=(post.attempt_count or 0) + 1,
+            redo_feedback=instruction,
+        )
+    except Exception:
+        raise HTTPException(status_code=502, detail="Falha ao refazer conteúdo.") from None
 
     post.content = content
-    post.feedback = body.instruction.strip()
+    post.feedback = instruction
     post.attempt_count = (post.attempt_count or 0) + 1
-    post.status = "APPROVED"
+    post.status = "UNDER_REVIEW"
     db.commit()
     db.refresh(post)
     return post

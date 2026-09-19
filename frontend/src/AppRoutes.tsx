@@ -6,7 +6,7 @@ import { Toaster } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { queryClient } from './lib/queryClient';
 import { useAppStore } from './store/useAppStore';
-import { bootstrapAuthSession, isPublicAppPath } from './lib/authBootstrap';
+import { bootstrapAuthSession } from './lib/authBootstrap';
 import { MainLayout } from './components/layout/MainLayout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { RequireOnboardingComplete } from './components/auth/RequireOnboardingComplete';
@@ -117,13 +117,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const theme = useAppStore((s) => s.theme);
 
     useEffect(() => {
-        const path = window.location.pathname;
-        if (isPublicAppPath(path)) {
-            // Do not block public pages on a refresh call that may hang (cold API, wrong origin).
-            useAppStore.getState().finishAuthBootstrap();
-            void bootstrapAuthSession();
-            return;
-        }
         void bootstrapAuthSession();
     }, []);
 

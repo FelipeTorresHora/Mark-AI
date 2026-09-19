@@ -20,8 +20,12 @@ export function OAuthCallbackPage({ platform }: OAuthCallbackPageProps) {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const queryClient = useQueryClient();
+    const isAuthLoading = useAppStore((s) => s.isAuthLoading);
+    const userId = useAppStore((s) => s.user?.id);
 
     useEffect(() => {
+        if (isAuthLoading) return;
+
         const connected = searchParams.get('connected');
         const error = searchParams.get('error');
 
@@ -36,13 +40,12 @@ export function OAuthCallbackPage({ platform }: OAuthCallbackPageProps) {
         }
 
         const oauthReturn = consumeOAuthReturnPath();
-        const userId = useAppStore.getState().user?.id;
         const destination =
             oauthReturn ??
             (userId && !isOnboardingComplete(userId) ? '/onboarding?step=accounts' : '/empresa');
 
         navigate(destination, { replace: true });
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [isAuthLoading, userId, navigate, platform, queryClient, searchParams]);
 
     return (
         <div className="flex items-center justify-center h-screen bg-slate-50">

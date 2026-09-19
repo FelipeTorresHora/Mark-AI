@@ -117,8 +117,10 @@ class _InstagramGraphClient:
             return _JsonResponse({"status_code": code, "id": "creation-1"})
         raise AssertionError(f"unexpected GET {url}")
 
-    def post(self, url, params=None, json=None, headers=None):
-        self.post_calls.append({"url": url, "params": params, "json": json, "headers": headers})
+    def post(self, url, params=None, json=None, headers=None, data=None):
+        self.post_calls.append({"url": url, "params": params, "json": json, "headers": headers, "data": data})
+        if url.endswith("oauth/access_token"):
+            return _JsonResponse({"access_token": "long-lived-user-token", "expires_in": 5184000})
         if url.endswith("/media") and not url.endswith("/media_publish"):
             return _JsonResponse({"id": "creation-1"})
         if url.endswith("/media_publish"):
@@ -208,6 +210,22 @@ def test_instagram_get_user_info_follows_accounts_pagination(monkeypatch):
 
     assert info["page_access_token"] == "page-token-2"
     assert len(client.get_calls) == 2
+
+
+def test_instagram_get_user_info_rejects_multiple_publishable_pages(monkeypatch):
+    client = _InstagramGraphClient(
+        pages=[
+            _linked_ig_page(id="page-a", name="A", access_token="token-a"),
+            _linked_ig_page(id="page-b", name="B", access_token="token-b"),
+        ]
+    )
+    monkeypatch.setattr("src.services.oauth_instagram.httpx.Client", lambda: client)
+
+    try:
+        oauth_instagram.get_user_info("token-ig")
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert "mais de uma Página" in str(exc)
 
 
 def test_instagram_exchange_long_lived_token(monkeypatch):

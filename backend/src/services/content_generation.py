@@ -1,5 +1,6 @@
 """Post copy generation (OpenAI), migrated from Gemini."""
 from src.services.openai_llm import chat_completion
+from src.services.prompt_safety import format_redo_feedback_block, sanitize_redo_feedback
 
 PROMPTS = {
     "X": """Você é um copywriter especialista em Twitter/X para marcas.
@@ -140,7 +141,10 @@ async def generate_post(
         objective=objective,
     )
     if redo_feedback:
-        prompt += f"\n\nRefaça o post incorporando este feedback do usuário: {redo_feedback}"
+        cleaned = sanitize_redo_feedback(redo_feedback)
+        if cleaned:
+            prompt += format_redo_feedback_block(cleaned)
+            prompt += "\nRefaça o post incorporando o feedback acima."
 
     metadata = {
         "user_id": user_id,

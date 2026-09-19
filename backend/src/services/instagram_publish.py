@@ -173,8 +173,8 @@ def wait_for_media_container(
     creation_id: str,
     access_token: str,
     *,
-    max_attempts: int = 8,
-    delay_seconds: float = 2.0,
+    max_attempts: int = 6,
+    delay_seconds: float = 0.5,
 ) -> str:
     """Poll IG Container status_code. Images are often ready immediately.
 
@@ -191,10 +191,9 @@ def wait_for_media_container(
                 raise InstagramPublishError("O container de mídia expirou (24h). Publique de novo.")
             raise InstagramPublishError("Instagram rejeitou o processamento da imagem.")
         if last_status == "":
-            # Feed image containers are often ready without a status_code.
             return "FINISHED"
         if attempt < max_attempts - 1:
-            time.sleep(delay_seconds)
+            time.sleep(min(delay_seconds, 0.5))
     raise InstagramPublishError(
         f"Instagram não finalizou o processamento da mídia a tempo (status={last_status or 'desconhecido'})."
     )

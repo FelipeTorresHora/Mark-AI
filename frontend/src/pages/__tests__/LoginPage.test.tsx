@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { LoginPage } from '../LoginPage';
 import * as apiModule from '../../lib/api';
+import { useAppStore } from '../../store/useAppStore';
 
 vi.mock('../../lib/api', () => ({
     api: { post: vi.fn(), get: vi.fn(), defaults: { baseURL: 'http://test' } },
@@ -32,6 +33,8 @@ function createWrapper() {
 describe('LoginPage', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        useAppStore.getState().clearAuth();
+        useAppStore.getState().finishAuthBootstrap();
     });
 
     it('renders login form', () => {

@@ -44,8 +44,7 @@ def send_briefing_message(
     if not session:
         session = ChatSession(user_id=current_user.id, messages=[])
         db.add(session)
-        db.commit()
-        db.refresh(session)
+        db.flush()
 
     user_msg = {
         "role": "user",
@@ -62,7 +61,7 @@ def send_briefing_message(
         )
     except CmoChatError as exc:
         db.rollback()
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail="CMO temporariamente indisponível.") from exc
 
     assistant_msg = {
         "role": "assistant",

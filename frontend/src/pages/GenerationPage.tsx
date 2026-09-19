@@ -78,7 +78,7 @@ export function GenerationPage() {
     const accessToken = useAppStore((s) => s.accessToken);
     const sseEndpoint =
         campaignId && accessToken
-            ? `${api.defaults.baseURL}/api/v1/generate/${campaignId}/stream?token=${encodeURIComponent(accessToken)}`
+            ? `${api.defaults.baseURL}/api/v1/generate/${campaignId}/stream`
             : null;
 
     const { platformStatus, platformProgress, activePlatforms, events, isComplete, isConnected, error } =
@@ -90,10 +90,14 @@ export function GenerationPage() {
             : (['X', 'LINKEDIN'] as Platform[]);
 
     useEffect(() => {
-        if (isComplete) {
-            setTimeout(() => navigate(`/campanhas/${campaignId}`), 1000);
+        if (!isComplete) return;
+        const complete = [...events].reverse().find((e) => e.event === 'generation_complete');
+        if (complete?.data.awaiting_review === false) {
+            return;
         }
-    }, [isComplete, campaignId, navigate]);
+        const timer = window.setTimeout(() => navigate(`/campanhas/${campaignId}`), 1000);
+        return () => window.clearTimeout(timer);
+    }, [isComplete, campaignId, navigate, events]);
 
     const logLines = events.map((e, i) => {
         if (e.event === 'writer_start') {
@@ -137,12 +141,18 @@ export function GenerationPage() {
                     )}
                 </div>
                 <h1 className="text-3xl font-extrabold app-text">
-                    {isComplete ? 'Posts Prontos!' : 'Gerando Conteúdo...'}
+                    {isComplete && events.some((e) => e.event === 'generation_complete' && e.data.awaiting_review === false)
+                        ? 'Geração incompleta'
+                        : isComplete
+                          ? 'Posts Prontos!'
+                          : 'Gerando Conteúdo...'}
                 </h1>
                 <p className="app-text-muted mt-2">
-                    {isComplete
-                        ? 'Redirecionando para revisão...'
-                        : 'Os agentes estão trabalhando em tempo real.'}
+                    {isComplete && events.some((e) => e.event === 'generation_complete' && e.data.awaiting_review === false)
+                        ? 'Nenhum post foi gerado. Conecte uma conta ou tente outra rodada.'
+                        : isComplete
+                          ? 'Redirecionando para revisão...'
+                          : 'Os agentes estão trabalhando em tempo real.'}
                 </p>
             </div>
 
