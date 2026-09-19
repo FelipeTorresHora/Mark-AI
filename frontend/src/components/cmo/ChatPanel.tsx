@@ -15,6 +15,7 @@ const QUICK_STARTS = [
 
 export function ChatPanel() {
     const { messages, isTyping, done, sendMessage } = useChatBriefing();
+    const chatLocked = done;
     const [input, setInput] = useState('');
     const [showScrollBtn, setShowScrollBtn] = useState(false);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -48,13 +49,13 @@ export function ChatPanel() {
     }, [input]);
 
     const handleSend = useCallback(() => {
-        if (!input.trim() || isTyping) return;
+        if (!input.trim() || isTyping || chatLocked) return;
         sendMessage(input);
         setInput('');
         if (textareaRef.current) {
             textareaRef.current.style.height = 'auto';
         }
-    }, [input, isTyping, sendMessage]);
+    }, [input, isTyping, chatLocked, sendMessage]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -134,7 +135,7 @@ export function ChatPanel() {
                             <div className="mx-auto w-full max-w-[44rem] px-2">
                                 <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
                                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                    Perfil da marca completo! Confira nas configurações.
+                                    Perfil da marca completo! Confira em Empresa.
                                 </div>
                             </div>
                         )}
@@ -167,16 +168,16 @@ export function ChatPanel() {
                             onKeyDown={handleKeyDown}
                             placeholder="Digite sua mensagem... (Enter para enviar)"
                             rows={1}
-                            disabled={isTyping}
+                            disabled={isTyping || chatLocked}
                             className={cn(
                                 'max-h-32 min-h-10 w-full resize-none bg-transparent px-1.5 py-1 text-sm app-text outline-none placeholder:text-[var(--app-text-soft)]',
-                                isTyping && 'opacity-50 cursor-not-allowed',
+                                (isTyping || chatLocked) && 'opacity-50 cursor-not-allowed',
                             )}
                         />
                         <div className="flex items-center justify-end pt-1">
                             <button
                                 onClick={handleSend}
-                                disabled={!input.trim() || isTyping}
+                                disabled={!input.trim() || isTyping || chatLocked}
                                 className="size-8 rounded-full bg-primary-400 hover:bg-primary-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center text-primary-900 shrink-0"
                                 aria-label="Enviar mensagem"
                             >
