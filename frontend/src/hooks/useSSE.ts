@@ -175,7 +175,10 @@ export function useSSE(endpoint: string | null): SSEState {
     const reconnectAttemptsRef = useRef(0);
     const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const endpointRef = useRef(endpoint);
-    endpointRef.current = endpoint;
+
+    useEffect(() => {
+        endpointRef.current = endpoint;
+    }, [endpoint]);
 
     const clearErrorTimer = useCallback(() => {
         if (errorTimerRef.current) {
