@@ -4,6 +4,7 @@ import { type Post } from '../types';
 import { usePostActions } from '../hooks/usePostActions';
 import { usePublishXPost, useScheduleXPost, useCancelXPost } from '../hooks/useXPosts';
 import { useXIntegrationStatus } from '../hooks/useXIntegration';
+import { useCurrentTimeMs } from '../hooks/useCurrentTime';
 import { EditPostModal } from '../components/posts/EditPostModal';
 import { Pagination } from '../components/common/Pagination';
 import { Button } from '../components/common/Button';
@@ -218,11 +219,12 @@ function XComposer() {
     const { data: xStatus } = useXIntegrationStatus();
     const publishNow = usePublishXPost();
     const schedulePost = useScheduleXPost();
+    const nowMs = useCurrentTimeMs();
 
     const trimmed = content.trim();
     const isOverLimit = content.length > 280;
     const hasSchedule = scheduledAt.length > 0;
-    const scheduleIsPast = hasSchedule && new Date(scheduledAt).getTime() <= Date.now();
+    const scheduleIsPast = hasSchedule && new Date(scheduledAt).getTime() <= nowMs;
     const disabled = !trimmed || isOverLimit || !xStatus?.connected || publishNow.isPending || schedulePost.isPending;
 
     async function submitNow() {

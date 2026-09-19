@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useCampaigns, useDeleteCampaign } from '../hooks/useCampaigns';
@@ -38,15 +38,24 @@ function clampPostCount(value: number) {
 export function DashboardPage() {
     const navigate = useNavigate();
     const location = useLocation();
+    const navState = location.state as { topic?: string; openObjective?: boolean } | null;
     const [page, setPage] = useState(0);
-    const [topic, setTopic] = useState<string>(
-        (location.state as { topic?: string } | null)?.topic ?? '',
-    );
+    const [topic, setTopic] = useState<string>(navState?.topic ?? '');
     const [postsPerPlatform, setPostsPerPlatform] = useState<PostsPerPlatform>({ ...DEFAULT_POSTS_PER_PLATFORM });
     const [isComposerOpen, setIsComposerOpen] = useState<boolean>(
-        !!(location.state as { topic?: string; openObjective?: boolean } | null)?.topic ||
-            !!(location.state as { openObjective?: boolean } | null)?.openObjective,
+        !!navState?.topic || !!navState?.openObjective,
     );
+    const [consumedNavKey, setConsumedNavKey] = useState<string | null>(null);
+
+    if (location.key !== consumedNavKey && navState) {
+        setConsumedNavKey(location.key);
+        if (navState.topic) {
+            setTopic(navState.topic);
+            setIsComposerOpen(true);
+        } else if (navState.openObjective) {
+            setIsComposerOpen(true);
+        }
+    }
     const [deletingCampaignId, setDeletingCampaignId] = useState<string | null>(null);
     const CAMPAIGNS_PER_PAGE = 10;
 
@@ -63,17 +72,8 @@ export function DashboardPage() {
         retry: (failureCount, err) => !isNotFoundError(err) && failureCount < 2,
     });
 
-    useEffect(() => {
-        const nextState = location.state as { topic?: string; openObjective?: boolean } | null;
-        if (nextState?.topic) {
-            setTopic(nextState.topic);
-            setIsComposerOpen(true);
-        } else if (nextState?.openObjective) {
-            setIsComposerOpen(true);
-        }
-    }, [location.state]);
 
-    const objectiveMode = !!(location.state as { openObjective?: boolean } | null)?.openObjective;
+    const objectiveMode = !!navState?.openObjective;
 
     const generateMutation = useMutation({
         mutationFn: async () => {

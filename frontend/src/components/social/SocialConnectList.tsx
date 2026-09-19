@@ -100,9 +100,3 @@ export function SocialConnectList({ className, variant = 'compact', onBeforeConn
         </div>
     );
 }
-
-export function useHasConnectedSocialAccount(): boolean {
-    const { data: accounts = [] } = useSocialAccounts();
-    const { data: xStatus } = useXIntegrationStatus();
-    return !!xStatus?.connected || accounts.length > 0;
-}

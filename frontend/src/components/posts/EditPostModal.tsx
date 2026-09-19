@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Calendar, Clock } from 'lucide-react';
 import { type Post } from '../../types';
 import { useEditPost } from '../../hooks/useEditPost';
+import { useCurrentTimeMs } from '../../hooks/useCurrentTime';
 import { useCancelXPost } from '../../hooks/useXPosts';
 import { XPreview } from '../previews/XPreview';
 import { LinkedInPreview } from '../previews/LinkedInPreview';
@@ -27,6 +28,7 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
     const [scheduledAt, setScheduledAt] = useState(() => (post?.scheduled_at ? toDatetimeLocal(post.scheduled_at) : ''));
     const { editPost, isEditing } = useEditPost();
     const cancelXPost = useCancelXPost();
+    const nowMs = useCurrentTimeMs();
 
     async function handleSave() {
         if (!post) return;
@@ -43,7 +45,7 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
     const charCount = content.length;
     const isX = post?.platform === 'X';
     const isOverLimit = isX && charCount > 280;
-    const scheduleIsPast = scheduleEnabled && scheduledAt && new Date(scheduledAt).getTime() <= Date.now();
+    const scheduleIsPast = scheduleEnabled && scheduledAt && new Date(scheduledAt).getTime() <= nowMs;
     const canCancelSchedule = isX && !!post?.scheduled_at && ['pending', 'failed'].includes(post.publish_status ?? 'pending');
 
     return (

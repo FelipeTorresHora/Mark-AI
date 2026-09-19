@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Target } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
@@ -12,7 +12,8 @@ import {
     type OnboardingStep,
     type ProductAudience,
 } from '../lib/onboarding';
-import { SocialConnectList, useHasConnectedSocialAccount } from '../components/social/SocialConnectList';
+import { SocialConnectList } from '../components/social/SocialConnectList';
+import { useHasConnectedSocialAccount } from '../hooks/useHasConnectedSocialAccount';
 import { cn } from '../lib/utils';
 
 const STEPS: { id: OnboardingStep; label: string }[] = [
@@ -34,19 +35,14 @@ export function OnboardingPage() {
     const [audience, setAudience] = useState<ProductAudience | null>(stored.audience);
     const step = parseStep(searchParams.get('step'));
     const hasConnectedAccount = useHasConnectedSocialAccount();
-
-    useEffect(() => {
-        if (stored.audience && !audience) {
-            setAudience(stored.audience);
-        }
-    }, [stored.audience, audience]);
+    const activeAudience = audience ?? stored.audience;
 
     const stepIndex = STEPS.findIndex((s) => s.id === step);
 
     const goals = useMemo(() => {
-        if (!audience) return [];
-        return getGoalsForAudience(audience, hasConnectedAccount);
-    }, [audience, hasConnectedAccount]);
+        if (!activeAudience) return [];
+        return getGoalsForAudience(activeAudience, hasConnectedAccount);
+    }, [activeAudience, hasConnectedAccount]);
 
     function goToStep(next: OnboardingStep) {
         setSearchParams({ step: next }, { replace: true });
@@ -64,7 +60,7 @@ export function OnboardingPage() {
         completeOnboarding(userId);
         navigate('/campanhas', {
             replace: true,
-            state: { openObjective: true, audience },
+            state: { openObjective: true, audience: activeAudience },
         });
     }
 
@@ -171,7 +167,7 @@ export function OnboardingPage() {
                     </section>
                 )}
 
-                {step === 'goals' && audience && (
+                {step === 'goals' && activeAudience && (
                     <section aria-labelledby="goals-heading">
                         <h2 id="goals-heading" className="text-xl font-black app-text mb-2" style={{ lineHeight: 1.1 }}>
                             Suas primeiras metas
@@ -179,7 +175,7 @@ export function OnboardingPage() {
                         <p className="text-sm app-text-muted mb-6">
                             Metas sugeridas para{' '}
                             <span className="font-semibold app-text-secondary">
-                                {AUDIENCE_OPTIONS.find((a) => a.id === audience)?.title}
+                                {AUDIENCE_OPTIONS.find((a) => a.id === activeAudience)?.title}
                             </span>
                             . Vamos acompanhá-las no dashboard.
                         </p>
@@ -245,7 +241,7 @@ export function OnboardingPage() {
                     </section>
                 )}
 
-                {step !== 'audience' && !audience && (
+                {step !== 'audience' && !activeAudience && (
                     <p className="text-sm app-text-muted">
                         Escolha um público primeiro.{' '}
                         <button type="button" className="text-primary-600 underline" onClick={() => goToStep('audience')}>
