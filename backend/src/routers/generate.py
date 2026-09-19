@@ -25,9 +25,11 @@ def start_generation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    objective = (request.objective or request.topic).strip()
+    topic = request.topic.strip()
+    strategic = (current_user.primary_objective or "").strip()
+    objective = (request.objective or strategic or topic).strip()
     campaign = Campaign(
-        topic=request.topic,
+        topic=topic,
         objective=objective,
         audience=request.audience,
         brand_context=request.brand_context.model_dump(),

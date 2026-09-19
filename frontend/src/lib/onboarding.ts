@@ -1,6 +1,23 @@
 export type ProductAudience = 'mei' | 'founder' | 'faceless';
 
-export type OnboardingStep = 'audience' | 'accounts' | 'goals';
+export type OnboardingStep = 'audience' | 'accounts' | 'goals' | 'objective';
+
+export const MIN_PRIMARY_OBJECTIVE_LENGTH = 20;
+
+export const PRIMARY_OBJECTIVE_EXAMPLES: Record<ProductAudience, string[]> = {
+    mei: [
+        'Lotar a agenda da clínica com posts que gerem confiança local',
+        'Atrair clientes na região mostrando ofertas e depoimentos reais',
+    ],
+    founder: [
+        'Lançar uma feature e explicar o valor em linguagem simples',
+        'Construir autoridade no LinkedIn para atrair early adopters',
+    ],
+    faceless: [
+        'Crescer no Instagram sem aparecer — só valor e consistência',
+        'Educar o público sobre o nicho com posts anônimos e úteis',
+    ],
+};
 
 export interface OnboardingState {
     completed: boolean;

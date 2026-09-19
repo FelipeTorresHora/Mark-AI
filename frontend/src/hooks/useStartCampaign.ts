@@ -13,7 +13,10 @@ export interface BrandProfileSnapshot {
 }
 
 export interface StartCampaignInput {
-    objective: string;
+    /** Campaign-specific focus (maps to API `topic`). */
+    campaignFocus: string;
+    /** Strategic brand objective saved during onboarding (maps to API `objective`). */
+    brandObjective?: string;
     brandContext: BrandProfileSnapshot;
     postsPerPlatform: PostsPerPlatform;
 }
@@ -30,7 +33,8 @@ export function useStartCampaign() {
     const mutation = useMutation({
         mutationFn: async (input: StartCampaignInput): Promise<StartCampaignResponse> => {
             const res = await api.post('/api/v1/generate', {
-                topic: input.objective.trim(),
+                topic: input.campaignFocus.trim(),
+                objective: input.brandObjective?.trim() || undefined,
                 brand_context: {
                     name: input.brandContext.name,
                     niche: input.brandContext.niche,

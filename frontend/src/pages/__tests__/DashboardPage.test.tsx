@@ -27,6 +27,7 @@ const mockApi = apiModule.api as unknown as {
 
 const defaultGoals = {
     audience: 'mei_loja_liberal',
+    primary_objective: null,
     completed_count: 0,
     total_count: 6,
     goals: [

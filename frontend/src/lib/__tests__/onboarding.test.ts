@@ -4,6 +4,7 @@ import {
     getGoalsForAudience,
     getOnboardingState,
     isOnboardingComplete,
+    MIN_PRIMARY_OBJECTIVE_LENGTH,
     saveOnboardingAudience,
 } from '../onboarding';
 
@@ -24,5 +25,9 @@ describe('onboarding storage', () => {
     it('returns audience-specific goals', () => {
         const goals = getGoalsForAudience('faceless', false);
         expect(goals.some((g) => g.label.includes('faceless'))).toBe(true);
+    });
+
+    it('requires minimum length for primary objective', () => {
+        expect(MIN_PRIMARY_OBJECTIVE_LENGTH).toBeGreaterThanOrEqual(20);
     });
 });
