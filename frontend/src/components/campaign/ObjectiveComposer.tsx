@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, Sparkles, Zap } from 'lucide-react';
 import { Button } from '../common/Button';
@@ -21,20 +21,17 @@ function clampPostCount(value: number) {
     return Math.min(4, Math.max(1, value));
 }
 
-export function ObjectiveComposer() {
+interface ObjectiveComposerProps {
+    initialObjective?: string;
+}
+
+export function ObjectiveComposer({ initialObjective = '' }: ObjectiveComposerProps) {
     const navigate = useNavigate();
-    const location = useLocation();
-    const [objective, setObjective] = useState('');
+    const [objective, setObjective] = useState(initialObjective);
     const [postsPerPlatform, setPostsPerPlatform] = useState<PostsPerPlatform>({
         ...DEFAULT_POSTS_PER_PLATFORM,
     });
     const { startCampaign, isStarting } = useStartCampaign();
-
-    useEffect(() => {
-        const state = location.state as { topic?: string; objective?: string } | null;
-        const preset = state?.objective ?? state?.topic;
-        if (preset) setObjective(preset);
-    }, [location.state]);
 
     const { data: profile, isLoading: profileLoading } = useQuery({
         queryKey: ['brand-profile'],

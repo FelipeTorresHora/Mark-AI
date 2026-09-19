@@ -8,6 +8,7 @@ import { XPreview } from '../previews/XPreview';
 import { LinkedInPreview } from '../previews/LinkedInPreview';
 import { Button } from '../common/Button';
 import { cn } from '../../lib/utils';
+import { isDatetimeLocalInPast } from '../../lib/schedule';
 
 interface EditPostModalProps {
     post: Post | null;
@@ -24,7 +25,11 @@ function toDatetimeLocal(iso: string): string {
 export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostModalProps) {
     const [content, setContent] = useState(() => post?.content ?? '');
     const [scheduleEnabled, setScheduleEnabled] = useState(() => initialMode === 'schedule' || !!post?.scheduled_at);
-    const [scheduledAt, setScheduledAt] = useState(() => (post?.scheduled_at ? toDatetimeLocal(post.scheduled_at) : ''));
+    const initialScheduledAt = post?.scheduled_at ? toDatetimeLocal(post.scheduled_at) : '';
+    const [scheduledAt, setScheduledAt] = useState(initialScheduledAt);
+    const [scheduleIsPast, setScheduleIsPast] = useState(() =>
+        initialScheduledAt ? isDatetimeLocalInPast(initialScheduledAt) : false,
+    );
     const { editPost, isEditing } = useEditPost();
     const cancelXPost = useCancelXPost();
 
@@ -43,8 +48,12 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
     const charCount = content.length;
     const isX = post?.platform === 'X';
     const isOverLimit = isX && charCount > 280;
-    const scheduleIsPast = scheduleEnabled && scheduledAt && new Date(scheduledAt).getTime() <= Date.now();
     const canCancelSchedule = isX && !!post?.scheduled_at && ['pending', 'failed'].includes(post.publish_status ?? 'pending');
+
+    function handleScheduledAtChange(value: string) {
+        setScheduledAt(value);
+        setScheduleIsPast(value.length > 0 && isDatetimeLocalInPast(value));
+    }
 
     return (
         <AnimatePresence>
@@ -144,12 +153,12 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
                                             <input
                                                 type="datetime-local"
                                                 value={scheduledAt}
-                                                onChange={e => setScheduledAt(e.target.value)}
+                                                onChange={(e) => handleScheduledAtChange(e.target.value)}
                                                 className="flex-1 bg-transparent text-sm text-slate-700 dark:text-slate-200 focus:outline-none"
                                             />
                                         </div>
                                     )}
-                                    {scheduleIsPast && (
+                                    {scheduleEnabled && scheduleIsPast && (
                                         <p className="text-xs text-rose-500 mt-2">Escolha uma data futura para agendar.</p>
                                     )}
                                 </div>
@@ -189,7 +198,7 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
                             <Button
                                 variant="primary"
                                 onClick={handleSave}
-                                disabled={isEditing || !content.trim() || isOverLimit || !!scheduleIsPast}
+                                disabled={isEditing || !content.trim() || isOverLimit || (scheduleEnabled && scheduleIsPast)}
                             >
                                 {isEditing ? 'Salvando...' : 'Salvar alterações'}
                             </Button>

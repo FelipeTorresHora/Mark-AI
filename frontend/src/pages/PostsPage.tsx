@@ -8,6 +8,7 @@ import { EditPostModal } from '../components/posts/EditPostModal';
 import { Pagination } from '../components/common/Pagination';
 import { Button } from '../components/common/Button';
 import { cn, formatScheduledAt } from '../lib/utils';
+import { isDatetimeLocalInPast } from '../lib/schedule';
 import { CheckCircle, XCircle, Pencil, Calendar, Twitter, Linkedin, FileText, X as XIcon, MoreHorizontal, Send, Clock } from 'lucide-react';
 import type { PostStatus, Platform } from '../types';
 
@@ -215,6 +216,7 @@ function PostRowCard({ post, onEdit, onApprove, onReject, onCancel, isApproving,
 function XComposer() {
     const [content, setContent] = useState('');
     const [scheduledAt, setScheduledAt] = useState('');
+    const [scheduleIsPast, setScheduleIsPast] = useState(false);
     const { data: xStatus } = useXIntegrationStatus();
     const publishNow = usePublishXPost();
     const schedulePost = useScheduleXPost();
@@ -222,8 +224,12 @@ function XComposer() {
     const trimmed = content.trim();
     const isOverLimit = content.length > 280;
     const hasSchedule = scheduledAt.length > 0;
-    const scheduleIsPast = hasSchedule && new Date(scheduledAt).getTime() <= Date.now();
     const disabled = !trimmed || isOverLimit || !xStatus?.connected || publishNow.isPending || schedulePost.isPending;
+
+    function handleScheduledAtChange(value: string) {
+        setScheduledAt(value);
+        setScheduleIsPast(value.length > 0 && isDatetimeLocalInPast(value));
+    }
 
     async function submitNow() {
         if (disabled) return;
@@ -273,7 +279,7 @@ function XComposer() {
                     <input
                         type="datetime-local"
                         value={scheduledAt}
-                        onChange={(event) => setScheduledAt(event.target.value)}
+                        onChange={(event) => handleScheduledAtChange(event.target.value)}
                         className="app-input text-sm px-3 py-1.5"
                     />
                 </label>

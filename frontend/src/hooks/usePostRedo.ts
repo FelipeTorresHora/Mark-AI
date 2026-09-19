@@ -7,7 +7,7 @@ export interface PostRedoRequest {
     instruction: string;
 }
 
-export interface PostRedoResponse extends Post {}
+export type PostRedoResponse = Post;
 
 /** Refazer conteúdo com instrução do usuário (compatível com resume LangGraph `redo`). */
 export function usePostRedo() {

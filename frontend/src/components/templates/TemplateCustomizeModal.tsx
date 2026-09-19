@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X, Zap, Eye } from 'lucide-react';
@@ -18,18 +18,23 @@ function fillTemplate(body: string, values: Record<string, string>): string {
     return body.replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? `{{${key}}}`);
 }
 
-export function TemplateCustomizeModal({ template, onClose }: Props) {
-    const navigate = useNavigate();
-    const [values, setValues] = useState<Record<string, string>>({});
+function emptyPlaceholderValues(template: PostTemplate): Record<string, string> {
+    const initial: Record<string, string> = {};
+    template.placeholders.forEach((p) => {
+        initial[p] = '';
+    });
+    return initial;
+}
 
-    // Reset values when template changes
-    useEffect(() => {
-        if (template) {
-            const initial: Record<string, string> = {};
-            template.placeholders.forEach((p) => { initial[p] = ''; });
-            setValues(initial);
-        }
-    }, [template]);
+function TemplateCustomizeForm({
+    template,
+    onClose,
+}: {
+    template: PostTemplate;
+    onClose: () => void;
+}) {
+    const navigate = useNavigate();
+    const [values, setValues] = useState<Record<string, string>>(() => emptyPlaceholderValues(template));
 
     const filledBody = useMemo(
         () => (template ? fillTemplate(template.bodyTemplate, values) : ''),
@@ -42,35 +47,33 @@ export function TemplateCustomizeModal({ template, onClose }: Props) {
     );
 
     function handleConfirm() {
-        if (!isValid || !template) return;
+        if (!isValid) return;
         navigate('/objetivo', { state: { objective: filledBody } });
         onClose();
     }
 
     return (
-        <AnimatePresence>
-            {template && (
-                <>
-                    {/* Backdrop */}
-                    <motion.div
-                        key="backdrop"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="fixed inset-0 bg-black/40 dark:bg-black/60 z-40 backdrop-blur-sm"
-                        onClick={onClose}
-                    />
+        <>
+            {/* Backdrop */}
+            <motion.div
+                key="backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="fixed inset-0 bg-black/40 dark:bg-black/60 z-40 backdrop-blur-sm"
+                onClick={onClose}
+            />
 
-                    {/* Drawer */}
-                    <motion.div
-                        key="drawer"
-                        initial={{ x: '100%' }}
-                        animate={{ x: 0 }}
-                        exit={{ x: '100%' }}
-                        transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-                        className="fixed inset-y-0 right-0 z-50 flex flex-col w-full max-w-2xl app-panel shadow-2xl"
-                    >
+            {/* Drawer */}
+            <motion.div
+                key="drawer"
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+                className="fixed inset-y-0 right-0 z-50 flex flex-col w-full max-w-2xl app-panel shadow-2xl"
+            >
                         {/* Header */}
                         <div className="flex items-start justify-between gap-4 px-6 py-5 border-b app-divider shrink-0">
                             <div>
@@ -166,9 +169,15 @@ export function TemplateCustomizeModal({ template, onClose }: Props) {
                                 Gerar com este Template
                             </button>
                         </div>
-                    </motion.div>
-                </>
-            )}
+            </motion.div>
+        </>
+    );
+}
+
+export function TemplateCustomizeModal({ template, onClose }: Props) {
+    return (
+        <AnimatePresence>
+            {template && <TemplateCustomizeForm key={template.id} template={template} onClose={onClose} />}
         </AnimatePresence>
     );
 }
