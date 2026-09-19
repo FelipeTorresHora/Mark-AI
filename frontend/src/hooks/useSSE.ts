@@ -57,11 +57,16 @@ function getPlatformStatus(progress: PlatformProgress): PlatformStatus {
 }
 
 export function useSSE(endpoint: string | null): SSEState {
+    const [trackedEndpoint, setTrackedEndpoint] = useState(endpoint);
     const [state, setState] = useState<SSEState>(() => createInitialState());
     const esRef = useRef<EventSource | null>(null);
 
-    useEffect(() => {
+    if (endpoint !== trackedEndpoint) {
+        setTrackedEndpoint(endpoint);
         setState(createInitialState());
+    }
+
+    useEffect(() => {
         if (!endpoint) return;
 
         const es = new EventSource(endpoint);

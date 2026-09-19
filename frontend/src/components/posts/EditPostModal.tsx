@@ -8,6 +8,7 @@ import { XPreview } from '../previews/XPreview';
 import { LinkedInPreview } from '../previews/LinkedInPreview';
 import { Button } from '../common/Button';
 import { cn } from '../../lib/utils';
+import { useClockMs } from '../../lib/useClockMs';
 
 interface EditPostModalProps {
     post: Post | null;
@@ -40,10 +41,11 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
         onClose();
     }
 
+    const nowMs = useClockMs();
     const charCount = content.length;
     const isX = post?.platform === 'X';
     const isOverLimit = isX && charCount > 280;
-    const scheduleIsPast = scheduleEnabled && scheduledAt && new Date(scheduledAt).getTime() <= Date.now();
+    const scheduleIsPast = scheduleEnabled && scheduledAt && new Date(scheduledAt).getTime() <= nowMs;
     const canCancelSchedule = isX && !!post?.scheduled_at && ['pending', 'failed'].includes(post.publish_status ?? 'pending');
 
     return (
