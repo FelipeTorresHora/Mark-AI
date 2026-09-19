@@ -8,6 +8,7 @@ import { useAppStore } from './store/useAppStore';
 import { MainLayout } from './components/layout/MainLayout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { DashboardPage } from './pages/DashboardPage';
+import { ObjectivePage } from './pages/ObjectivePage';
 import { GenerationPage } from './pages/GenerationPage';
 import { ReviewPage } from './pages/ReviewPage';
 import { PostsPage } from './pages/PostsPage';
@@ -34,6 +35,8 @@ function ProtectedLayout() {
 /** Rotas com layout protegido (pathless — só wrapper). */
 const protectedRoutes = [
     { path: '/campanhas', element: <DashboardPage /> },
+    { path: '/objetivo', element: <ObjectivePage /> },
+    { path: '/nova-campanha', element: <Navigate to="/objetivo" replace /> },
     { path: '/cmo', element: <CmoPage /> },
     { path: '/empresa', element: <CompanyPage /> },
     { path: '/configuracoes', element: <Navigate to="/empresa" replace /> },

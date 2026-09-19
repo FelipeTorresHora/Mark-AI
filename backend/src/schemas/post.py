@@ -32,3 +32,7 @@ class PostPatchBody(BaseModel):
     status: Optional[Literal["APPROVED", "REJECTED", "FINAL", "PUBLISHED"]] = None
     content: Optional[str] = None
     scheduled_at: Optional[datetime] = None
+
+
+class PostRedoBody(BaseModel):
+    instruction: str = Field(..., min_length=10, max_length=2000)

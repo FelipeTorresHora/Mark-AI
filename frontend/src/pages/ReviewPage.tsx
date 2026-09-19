@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { usePosts } from '../hooks/usePosts';
 import { type Platform, type Post } from '../types';
 import { usePostActions } from '../hooks/usePostActions';
+import { usePostRedo } from '../hooks/usePostRedo';
 import { useCampaign } from '../hooks/useCampaigns';
 import { usePublishPost } from '../hooks/useSocialAccounts';
 import { useEditPost } from '../hooks/useEditPost';
@@ -12,7 +13,7 @@ import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { cn, formatScheduledAt } from '../lib/utils';
 import { showError, showSuccess } from '../lib/toast';
-import { CheckCircle, XCircle, ArrowLeft, MessageSquare, Pencil, Calendar, Send, Globe, Clock, Save } from 'lucide-react';
+import { CheckCircle, XCircle, ArrowLeft, MessageSquare, Pencil, Calendar, Send, Globe, Clock, Save, RotateCcw } from 'lucide-react';
 
 function toDatetimeLocal(iso: string): string {
     const d = new Date(iso);
@@ -30,22 +31,24 @@ function ScoreBadge({ score }: { score?: number }) {
     );
 }
 
+const MIN_REDO_INSTRUCTION = 10;
+
 interface PostCardProps {
     post: Post;
     onApprove: (id: string) => void;
-    onReject: (id: string) => void;
+    onRedo: (id: string, instruction: string) => void;
     onPublish: (id: string) => void;
     onEditContent: (id: string, content: string) => void;
     onEditSchedule: (id: string, scheduledAt: string | null) => void;
     isApproving: boolean;
-    isRejecting: boolean;
+    isRedoing: boolean;
     isPublishing: boolean;
     isEditing: boolean;
 }
 
 const PostCard = memo(function PostCard({
-    post, onApprove, onReject, onPublish, onEditContent, onEditSchedule,
-    isApproving, isRejecting, isPublishing, isEditing,
+    post, onApprove, onRedo, onPublish, onEditContent, onEditSchedule,
+    isApproving, isRedoing, isPublishing, isEditing,
 }: PostCardProps) {
     const isFinal = post.status === 'FINAL';
     const isRejectedStatus = post.status === 'REJECTED';
@@ -57,6 +60,8 @@ const PostCard = memo(function PostCard({
     const [editContent, setEditContent] = useState(post.content ?? '');
     const [scheduleOpen, setScheduleOpen] = useState(false);
     const [scheduledAt, setScheduledAt] = useState(post.scheduled_at ? toDatetimeLocal(post.scheduled_at) : '');
+    const [redoOpen, setRedoOpen] = useState(false);
+    const [redoInstruction, setRedoInstruction] = useState('');
 
     async function handleSaveEdit() {
         onEditContent(post.id, editContent);
@@ -68,6 +73,15 @@ const PostCard = memo(function PostCard({
         setScheduleOpen(false);
     }
 
+    function handleSubmitRedo() {
+        const trimmed = redoInstruction.trim();
+        if (trimmed.length < MIN_REDO_INSTRUCTION) return;
+        onRedo(post.id, trimmed);
+        setRedoOpen(false);
+        setRedoInstruction('');
+    }
+
+    const redoInstructionValid = redoInstruction.trim().length >= MIN_REDO_INSTRUCTION;
     const isX = post.platform === 'X';
     const isOverLimit = isX && editContent.length > 280;
 
@@ -99,7 +113,48 @@ const PostCard = memo(function PostCard({
             {post.feedback && (
                 <div className="flex items-start gap-2 app-chip-info rounded-[18px] p-3 mb-4 text-sm">
                     <MessageSquare size={14} className="shrink-0 mt-0.5 text-blue-500" />
-                    <p><span className="font-semibold">Feedback IA:</span> {post.feedback}</p>
+                    <p><span className="font-semibold">Última instrução de refação:</span> {post.feedback}</p>
+                </div>
+            )}
+
+            {redoOpen && isPending && (
+                <div className="mb-4 rounded-[24px] border border-[#9fe870] bg-[#e2f6d5]/40 dark:bg-[#163300]/20 p-4">
+                    <label htmlFor={`redo-${post.id}`} className="block text-sm font-semibold app-text-secondary mb-2">
+                        O que melhorar neste post?
+                    </label>
+                    <textarea
+                        id={`redo-${post.id}`}
+                        value={redoInstruction}
+                        onChange={(e) => setRedoInstruction(e.target.value)}
+                        rows={3}
+                        className="app-input resize-none text-sm w-full mb-2"
+                        placeholder="Ex.: Tom mais direto, menos jargão, incluir CTA para agendar consulta..."
+                        disabled={isRedoing}
+                    />
+                    <p className={`text-xs mb-3 ${redoInstructionValid ? 'text-emerald-600' : 'app-text-soft'}`}>
+                        {redoInstruction.trim().length}/{MIN_REDO_INSTRUCTION} mín. (obrigatório)
+                    </p>
+                    <div className="flex gap-2 justify-end flex-wrap">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setRedoOpen(false);
+                                setRedoInstruction('');
+                            }}
+                            disabled={isRedoing}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            variant="primary"
+                            onClick={handleSubmitRedo}
+                            disabled={!redoInstructionValid || isRedoing}
+                            className="flex items-center gap-2"
+                        >
+                            <RotateCcw size={16} />
+                            {isRedoing ? 'Refazendo...' : 'Enviar refação'}
+                        </Button>
+                    </div>
                 </div>
             )}
 
@@ -168,7 +223,7 @@ const PostCard = memo(function PostCard({
                                         variant="outline"
                                         onClick={() => setScheduleOpen(v => !v)}
                                         onMouseDown={() => setScheduledAt(post.scheduled_at ? toDatetimeLocal(post.scheduled_at) : '')}
-                                        disabled={isApproving || isRejecting || isPublishing}
+                                        disabled={isApproving || isRedoing || isPublishing}
                                         className={cn(
                                             'flex items-center gap-2',
                                             scheduleOpen
@@ -184,18 +239,18 @@ const PostCard = memo(function PostCard({
                                             setEditContent(post.content ?? '');
                                             setIsEditMode(true);
                                         }}
-                                        disabled={isApproving || isRejecting || isPublishing}
+                                        disabled={isApproving || isRedoing || isPublishing}
                                         className="flex items-center gap-2 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700"
                                     >
                                         <Pencil size={16} /> Editar
                                     </Button>
                                     <Button
-                                        variant="outline"
-                                        onClick={() => onReject(post.id)}
-                                        disabled={isRejecting || isApproving || isPublishing}
-                                        className="flex items-center gap-2 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                                        variant="secondary"
+                                        onClick={() => setRedoOpen((v) => !v)}
+                                        disabled={isRedoing || isApproving || isPublishing}
+                                        className="flex items-center gap-2"
                                     >
-                                        <XCircle size={16} /> Rejeitar
+                                        <RotateCcw size={16} /> Refazer
                                     </Button>
                                 </>
                             )}
@@ -203,7 +258,7 @@ const PostCard = memo(function PostCard({
                                 <Button
                                     variant="outline"
                                     onClick={() => onPublish(post.id)}
-                                    disabled={isPublishing || isApproving || isRejecting}
+                                    disabled={isPublishing || isApproving || isRedoing}
                                         className="flex items-center gap-2 text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-300 dark:hover:bg-blue-950/30"
                                     >
                                     <Send size={16} /> {isPublishing ? 'Publicando...' : 'Publicar'}
@@ -213,7 +268,7 @@ const PostCard = memo(function PostCard({
                                 <Button
                                     variant="primary"
                                     onClick={() => onApprove(post.id)}
-                                    disabled={isApproving || isRejecting}
+                                    disabled={isApproving || isRedoing}
                                     className="flex items-center gap-2"
                                 >
                                     <CheckCircle size={16} /> {isApproving ? 'Aprovando...' : 'Aprovar'}
@@ -234,12 +289,15 @@ export const ReviewPage = () => {
     const { data: postData, isLoading } = usePosts(undefined, campaignId);
     const posts = postData?.items;
     const { data: campaign } = useCampaign(campaignId!);
-    const { approvePost, rejectPost, isApproving, isRejecting } = usePostActions();
+    const { approvePost, isApproving } = usePostActions();
+    const { redoPost, isRedoing } = usePostRedo();
     const publishPostMutation = usePublishPost();
     const { editPost, isEditing } = useEditPost();
 
     const handleApprove = useCallback((id: string) => { approvePost(id); }, [approvePost]);
-    const handleReject = useCallback((id: string) => { rejectPost(id); }, [rejectPost]);
+    const handleRedo = useCallback((id: string, instruction: string) => {
+        redoPost(id, instruction);
+    }, [redoPost]);
     const handlePublish = useCallback((id: string) => {
         publishPostMutation.mutate(id, {
             onSuccess: () => showSuccess('Post publicado com sucesso!'),
@@ -283,9 +341,11 @@ export const ReviewPage = () => {
                     >
                         <ArrowLeft size={14} /> Voltar às campanhas
                     </button>
-                    <h1 className="text-2xl font-extrabold app-text">Revisão de Posts</h1>
+                    <h1 className="text-2xl font-extrabold app-text">Aprovar ou refazer</h1>
                     {campaign && (
-                        <p className="app-text-muted mt-1 text-sm line-clamp-2 max-w-xl">{campaign.topic}</p>
+                        <p className="app-text-muted mt-1 text-sm line-clamp-2 max-w-xl">
+                            <span className="font-semibold app-text-secondary">Objetivo:</span> {campaign.topic}
+                        </p>
                     )}
                 </div>
                 <Card className="px-5 py-3 text-center shrink-0">
@@ -326,12 +386,12 @@ export const ReviewPage = () => {
                                             key={post.id}
                                             post={post}
                                             onApprove={handleApprove}
-                                            onReject={handleReject}
+                                            onRedo={handleRedo}
                                             onPublish={handlePublish}
                                             onEditContent={handleEditContent}
                                             onEditSchedule={handleEditSchedule}
                                             isApproving={isApproving}
-                                            isRejecting={isRejecting}
+                                            isRedoing={isRedoing}
                                             isPublishing={publishPostMutation.isPending}
                                             isEditing={isEditing}
                                         />

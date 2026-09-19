@@ -5,6 +5,16 @@ import { MemoryRouter } from 'react-router-dom';
 import { DashboardPage } from '../DashboardPage';
 import * as apiModule from '../../lib/api';
 
+const navigateMock = vi.fn();
+
+vi.mock('react-router-dom', async () => {
+    const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+    return {
+        ...actual,
+        useNavigate: () => navigateMock,
+    };
+});
+
 vi.mock('../../lib/api', () => ({
     api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() },
 }));
@@ -94,33 +104,13 @@ describe('DashboardPage', () => {
         });
     });
 
-    it('submits new campaign with posts_per_platform', async () => {
+    it('navigates to objective flow for new campaign', async () => {
         mockDashboardRequests({});
-        mockApi.post.mockResolvedValueOnce({ data: { campaign_id: 'camp-1', post_ids: ['1', '2', '3', '4'] } });
-
         render(<DashboardPage />, { wrapper: createWrapper() });
 
-        fireEvent.click(screen.getByText('Nova Campanha'));
-        await waitFor(() => {
-            expect(screen.getByText('Acme')).toBeTruthy();
-        });
-        fireEvent.change(screen.getByLabelText('Descreva a pauta desta campanha'), {
-            target: { value: 'Uma campanha bem detalhada para testar multiplas variacoes.' },
-        });
-        fireEvent.change(screen.getByLabelText('Variações para X'), {
-            target: { value: '3' },
-        });
-        fireEvent.change(screen.getByLabelText('Variações para LinkedIn'), {
-            target: { value: '1' },
-        });
-        fireEvent.click(screen.getByText('Gerar Posts'));
+        fireEvent.click(screen.getByText('Definir objetivo'));
 
-        await waitFor(() => {
-            expect(mockApi.post).toHaveBeenCalledWith('/api/v1/generate', expect.objectContaining({
-                topic: 'Uma campanha bem detalhada para testar multiplas variacoes.',
-                posts_per_platform: { X: 3, LINKEDIN: 1 },
-            }));
-        });
+        expect(navigateMock).toHaveBeenCalledWith('/objetivo');
     });
 
     it('deletes campaign from the list with confirmation', async () => {

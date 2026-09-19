@@ -14,9 +14,14 @@ vi.mock('../../hooks/useCampaigns', () => ({
 vi.mock('../../hooks/usePostActions', () => ({
     usePostActions: () => ({
         approvePost: vi.fn(),
-        rejectPost: vi.fn(),
         isApproving: false,
-        isRejecting: false,
+    }),
+}));
+
+vi.mock('../../hooks/usePostRedo', () => ({
+    usePostRedo: () => ({
+        redoPost: vi.fn(),
+        isRedoing: false,
     }),
 }));
 
@@ -73,6 +78,7 @@ describe('ReviewPage', () => {
             </MemoryRouter>,
         );
 
+        expect(screen.getByText('Aprovar ou refazer')).toBeTruthy();
         expect(screen.getByText('Variantes para Twitter / X')).toBeTruthy();
         expect(screen.getByText('Variantes para LinkedIn')).toBeTruthy();
         expect(screen.getByText('X 1')).toBeTruthy();

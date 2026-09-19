@@ -204,3 +204,54 @@ def test_update_post_updates_status_only(
 
     assert response.status_code == 200
     assert response.json()["status"] == "PUBLISHED"
+
+
+def test_redo_post_regenerates_with_instruction(
+    client,
+    user_factory,
+    campaign_factory,
+    post_factory,
+    auth_headers,
+    monkeypatch,
+):
+    user = user_factory()
+    campaign = campaign_factory(user, topic="Crescer no LinkedIn")
+    post = post_factory(campaign, status="APPROVED", content="Versão antiga", platform="LINKEDIN")
+
+    async def fake_generate(platform, topic, brand_context):
+        assert "Instruções do usuário" in topic
+        return "Versão nova com tom mais direto"
+
+    monkeypatch.setattr("src.routers.posts.generate_post", fake_generate)
+
+    response = client.post(
+        f"/api/v1/posts/{post.id}/redo",
+        headers=auth_headers(user),
+        json={"instruction": "Tom mais direto e menos formal"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["content"] == "Versão nova com tom mais direto"
+    assert payload["feedback"] == "Tom mais direto e menos formal"
+    assert payload["status"] == "APPROVED"
+    assert payload["attempt_count"] >= 1
+
+
+def test_redo_post_rejects_short_instruction(
+    client,
+    user_factory,
+    campaign_factory,
+    post_factory,
+    auth_headers,
+):
+    user = user_factory()
+    post = post_factory(campaign_factory(user), status="APPROVED")
+
+    response = client.post(
+        f"/api/v1/posts/{post.id}/redo",
+        headers=auth_headers(user),
+        json={"instruction": "curto"},
+    )
+
+    assert response.status_code == 422

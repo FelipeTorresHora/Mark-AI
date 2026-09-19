@@ -43,7 +43,7 @@ export function TemplateCustomizeModal({ template, onClose }: Props) {
 
     function handleConfirm() {
         if (!isValid || !template) return;
-        navigate('/campanhas', { state: { topic: filledBody } });
+        navigate('/objetivo', { state: { objective: filledBody } });
         onClose();
     }
 

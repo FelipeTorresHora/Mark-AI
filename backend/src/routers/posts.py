@@ -9,7 +9,8 @@ from src.dependencies.auth import get_current_user
 from src.models.campaign import Campaign
 from src.models.post import Post
 from src.models.user import User
-from src.schemas.post import PostResponse, PostPatchBody
+from src.schemas.post import PostResponse, PostPatchBody, PostRedoBody
+from src.services.gemini import generate_post
 from src.schemas.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/posts", tags=["posts"])
@@ -128,6 +129,48 @@ def update_post(
                 if post.publish_status != "published":
                     post.publish_status = "pending"
 
+    db.commit()
+    db.refresh(post)
+    return post
+
+
+REDO_ALLOWED_STATUSES = frozenset({"DRAFT", "UNDER_REVIEW", "APPROVED"})
+
+
+@router.post("/{post_id}/redo", response_model=PostResponse)
+async def redo_post(
+    post_id: str,
+    body: PostRedoBody,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Regenera conteúdo com instrução do usuário (compatível com resume LangGraph `redo`)."""
+    post = _get_post_with_ownership(post_id, current_user.id, db)
+    if post.status not in REDO_ALLOWED_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Post em status {post.status} não pode ser refeito.",
+        )
+    if not post.campaign_id:
+        raise HTTPException(status_code=400, detail="Post sem campanha associada.")
+
+    campaign = db.query(Campaign).filter(Campaign.id == post.campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+
+    brand_context = campaign.brand_context or {}
+    topic_with_feedback = (
+        f"{campaign.topic}\n\nInstruções do usuário para refazer: {body.instruction.strip()}"
+    )
+    try:
+        content = await generate_post(post.platform, topic_with_feedback, brand_context)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao refazer conteúdo: {exc}") from exc
+
+    post.content = content
+    post.feedback = body.instruction.strip()
+    post.attempt_count = (post.attempt_count or 0) + 1
+    post.status = "APPROVED"
     db.commit()
     db.refresh(post)
     return post
