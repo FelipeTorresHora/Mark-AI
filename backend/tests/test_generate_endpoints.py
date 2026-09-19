@@ -316,6 +316,33 @@ def test_generation_stream_skips_instagram_without_account(
     assert any('"event": "generation_complete"' in e for e in events)
 
 
+def test_generation_stream_reports_blank_exception_type(
+    db_session,
+    user_factory,
+    campaign_factory,
+    post_factory,
+    monkeypatch,
+):
+    user = user_factory()
+    campaign = campaign_factory(user)
+    post_factory(campaign, platform="X", content=None)
+
+    async def boom(**kwargs):
+        raise NotImplementedError()
+
+    monkeypatch.setattr("src.services.sse.run_until_review", boom)
+
+    async def collect_events():
+        return [event async for event in generation_stream(str(campaign.id), db_session)]
+
+    events = asyncio.run(collect_events())
+    db_session.refresh(campaign)
+    assert campaign.status == "FAILED"
+    error_events = [e for e in events if '"event": "error"' in e]
+    assert error_events
+    assert "NotImplementedError" in error_events[0]
+
+
 def test_generation_stream_fails_when_every_platform_is_skipped(
     db_session,
     user_factory,

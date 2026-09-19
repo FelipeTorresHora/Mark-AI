@@ -6,6 +6,7 @@ import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { api } from '../../lib/api';
 import { isNotFoundError } from '../../lib/utils';
+import { starterBrandContext, toCampaignAudience } from '../../lib/brandContext';
 import { useStartCampaign, type BrandProfileSnapshot } from '../../hooks/useStartCampaign';
 import { useGoals } from '../../hooks/useGoals';
 import type { PostsPerPlatform } from '../../types';
@@ -35,20 +36,25 @@ export function ObjectiveComposer({ initialObjective = '' }: ObjectiveComposerPr
     const { startCampaign, isStarting } = useStartCampaign();
     const { data: goalsData } = useGoals();
     const brandObjective = goalsData?.primary_objective?.trim() ?? '';
+    const campaignAudience = toCampaignAudience(goalsData?.audience);
 
     const { data: profile, isLoading: profileLoading } = useQuery({
         queryKey: ['brand-profile'],
-        queryFn: async (): Promise<BrandProfileSnapshot> => {
-            const res = await api.get('/api/v1/brand-profile');
-            return res.data;
+        queryFn: async (): Promise<BrandProfileSnapshot | null> => {
+            try {
+                const res = await api.get('/api/v1/brand-profile');
+                return res.data;
+            } catch (err: unknown) {
+                if (isNotFoundError(err)) return null;
+                throw err;
+            }
         },
         retry: (failureCount, err) => !isNotFoundError(err) && failureCount < 2,
     });
 
     const hasValidPostCounts = Object.values(postsPerPlatform).every((c) => c >= 1 && c <= 4);
     const totalPosts = postsPerPlatform.X + postsPerPlatform.LINKEDIN;
-    const canStart =
-        objective.trim().length >= 20 && !!profile && hasValidPostCounts && !isStarting;
+    const canStart = objective.trim().length >= 20 && hasValidPostCounts && !isStarting && !profileLoading;
 
     function updatePostCount(platform: keyof PostsPerPlatform, value: string) {
         setPostsPerPlatform((current) => ({
@@ -58,11 +64,12 @@ export function ObjectiveComposer({ initialObjective = '' }: ObjectiveComposerPr
     }
 
     function handleSubmit() {
-        if (!profile || !canStart) return;
+        if (!canStart) return;
         startCampaign({
             campaignFocus: objective,
             brandObjective: brandObjective || undefined,
-            brandContext: profile,
+            audience: campaignAudience,
+            brandContext: profile ?? starterBrandContext(goalsData?.audience, brandObjective || objective),
             postsPerPlatform,
         });
     }
@@ -91,10 +98,10 @@ export function ObjectiveComposer({ initialObjective = '' }: ObjectiveComposerPr
                     <AlertCircle size={20} className="text-amber-600 mt-0.5 shrink-0" />
                     <div>
                         <p className="font-semibold text-amber-800 dark:text-amber-300">
-                            Perfil da marca não configurado
+                            Perfil da marca ainda não está completo
                         </p>
                         <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
-                            Configure sua marca em{' '}
+                            Dá para gerar agora com um contexto inicial. Refine em{' '}
                             <button
                                 type="button"
                                 onClick={() => navigate('/empresa')}
@@ -102,7 +109,7 @@ export function ObjectiveComposer({ initialObjective = '' }: ObjectiveComposerPr
                             >
                                 Empresa
                             </button>{' '}
-                            antes de gerar conteúdo.
+                            para posts mais alinhados à marca.
                         </p>
                     </div>
                 </Card>

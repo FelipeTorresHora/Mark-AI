@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import uuid
 from typing import Any, Callable, TypedDict
@@ -17,7 +18,8 @@ from src.services.prompt_safety import sanitize_redo_feedback
 EventEmitter = Callable[[str, str | None, dict[str, Any]], None]
 
 _checkpointer: Any | None = None
-_checkpointer_cm: Any | None = None
+_async_pool: Any | None = None
+_checkpointer_loop: Any | None = None
 
 
 class GenerationState(TypedDict, total=False):
@@ -60,25 +62,67 @@ def normalize_platform_contents(raw: dict | None) -> dict[str, list[str]]:
     return result
 
 
-def _get_checkpointer():
-    global _checkpointer, _checkpointer_cm
+def _checkpoint_conninfo() -> str:
+    url = settings.database_url
+    for prefix in ("postgresql+psycopg2://", "postgresql+psycopg://", "postgres://"):
+        if url.startswith(prefix):
+            url = "postgresql://" + url[len(prefix) :]
+            break
+    return url
+
+
+async def _aget_checkpointer():
+    """Return a checkpointer compatible with ``ainvoke`` / ``aget_state``.
+
+    Sync ``PostgresSaver`` only implements ``get_tuple``; LangGraph's async
+    loop calls ``aget_tuple`` and the base class raises a blank
+    ``NotImplementedError``, which failed campaign generation in production.
+    """
+    global _checkpointer, _async_pool, _checkpointer_loop
+
+    loop = asyncio.get_running_loop()
     if _checkpointer is not None:
-        return _checkpointer
+        if isinstance(_checkpointer, MemorySaver) or _checkpointer_loop is loop:
+            return _checkpointer
+        _checkpointer = None
+        if _async_pool is not None:
+            with contextlib.suppress(Exception):
+                await _async_pool.close()
+            _async_pool = None
+            _checkpointer_loop = None
+
     if os.environ.get("PYTEST_CURRENT_TEST"):
         _checkpointer = MemorySaver()
+        _checkpointer_loop = loop
         return _checkpointer
-    try:
-        from langgraph.checkpoint.postgres import PostgresSaver
 
-        conn = settings.database_url.replace("postgresql+psycopg2://", "postgresql://")
-        _checkpointer_cm = PostgresSaver.from_conn_string(conn)
-        _checkpointer = _checkpointer_cm.__enter__()
-        _checkpointer.setup()
+    try:
+        from psycopg.rows import dict_row
+        from psycopg_pool import AsyncConnectionPool
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+        _async_pool = AsyncConnectionPool(
+            conninfo=_checkpoint_conninfo(),
+            min_size=1,
+            max_size=5,
+            timeout=15,
+            kwargs={
+                "autocommit": True,
+                "prepare_threshold": 0,
+                "row_factory": dict_row,
+            },
+            open=False,
+        )
+        await _async_pool.open()
+        saver = AsyncPostgresSaver(_async_pool)
+        await saver.setup()
+        _checkpointer = saver
+        _checkpointer_loop = loop
         return _checkpointer
     except Exception as exc:
         raise RuntimeError(
-            "Checkpointer Postgres do LangGraph indisponível. "
-            "Resume humano não funciona com MemorySaver em serverless."
+            "Checkpointer Postgres async do LangGraph indisponível. "
+            "ainvoke exige AsyncPostgresSaver; o saver síncrono quebra a geração."
         ) from exc
 
 
@@ -177,7 +221,7 @@ async def _generate_one_variant(
         return platform, variant_index, ""
 
 
-def _build_graph(emitter: EventEmitter | None = None):
+async def _build_graph(emitter: EventEmitter | None = None):
     graph = StateGraph(GenerationState)
 
     async def generate_per_platform(state: GenerationState) -> dict:
@@ -271,7 +315,7 @@ def _build_graph(emitter: EventEmitter | None = None):
         {"redo": "generate_per_platform", "end": END},
     )
 
-    return graph.compile(checkpointer=_get_checkpointer(), interrupt_before=[])
+    return graph.compile(checkpointer=await _aget_checkpointer(), interrupt_before=[])
 
 
 async def run_until_review(
@@ -286,7 +330,7 @@ async def run_until_review(
     campaign_id: str | None,
     emitter: EventEmitter | None = None,
 ) -> GenerationState:
-    app = _build_graph(emitter)
+    app = await _build_graph(emitter)
     config = {"configurable": {"thread_id": thread_id}}
     initial: GenerationState = {
         "objective": objective,
@@ -312,7 +356,7 @@ async def resume_after_human(
     feedback: str | None = None,
     emitter: EventEmitter | None = None,
 ) -> GenerationState:
-    app = _build_graph(emitter)
+    app = await _build_graph(emitter)
     config = {"configurable": {"thread_id": thread_id}}
     payload = {
         "action": action,
@@ -331,17 +375,17 @@ def _graph_config(thread_id: str) -> dict:
     return {"configurable": {"thread_id": thread_id}}
 
 
-def get_review_interrupt_contents(thread_id: str) -> dict[str, list[str]] | None:
+async def get_review_interrupt_contents(thread_id: str) -> dict[str, list[str]] | None:
     """Return platform contents when the graph is paused at human review, else None."""
-    app = _build_graph(None)
-    snap = app.get_state(_graph_config(thread_id))
+    app = await _build_graph(None)
+    snap = await app.aget_state(_graph_config(thread_id))
     if not snap.interrupts:
         return None
     contents = normalize_platform_contents((snap.values or {}).get("platform_contents"))
     return contents or None
 
 
-def graph_checkpoint_exists(thread_id: str) -> bool:
-    app = _build_graph(None)
-    snap = app.get_state(_graph_config(thread_id))
+async def graph_checkpoint_exists(thread_id: str) -> bool:
+    app = await _build_graph(None)
+    snap = await app.aget_state(_graph_config(thread_id))
     return bool(snap.values or snap.next or snap.interrupts)

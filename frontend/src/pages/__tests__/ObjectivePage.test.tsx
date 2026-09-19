@@ -79,4 +79,49 @@ describe('ObjectivePage', () => {
             expect(navigateMock).toHaveBeenCalledWith('/campanhas/camp-1/gerando');
         });
     });
+
+    it('starts generation with starter brand context when profile is missing', async () => {
+        mockApi.get.mockImplementation(async (url: string) => {
+            if (url === '/api/v1/brand-profile') {
+                const error = { response: { status: 404 } };
+                throw error;
+            }
+            return {
+                data: {
+                    audience: 'mei_loja_liberal',
+                    primary_objective: 'Lotar a agenda da clínica com posts que gerem confiança local',
+                },
+            };
+        });
+        mockApi.post.mockResolvedValueOnce({
+            data: { campaign_id: 'camp-2', post_ids: ['1', '2'] },
+        });
+
+        render(<ObjectivePage />, { wrapper: createWrapper() });
+
+        await waitFor(() => {
+            expect(screen.getByText(/ainda não está completo/i)).toBeTruthy();
+        });
+
+        fireEvent.change(screen.getByLabelText('Objetivo desta rodada'), {
+            target: {
+                value: 'Quero mais agendamentos na clínica com posts locais e acolhedores.',
+            },
+        });
+        fireEvent.click(screen.getByText('Gerar conteúdo'));
+
+        await waitFor(() => {
+            expect(mockApi.post).toHaveBeenCalledWith(
+                '/api/v1/generate',
+                expect.objectContaining({
+                    audience: 'mei',
+                    brand_context: expect.objectContaining({
+                        name: 'Minha empresa',
+                        tone: 'Profissional',
+                    }),
+                }),
+            );
+            expect(navigateMock).toHaveBeenCalledWith('/campanhas/camp-2/gerando');
+        });
+    });
 });

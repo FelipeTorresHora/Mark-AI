@@ -1,11 +1,17 @@
 import uuid
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, func
+from sqlalchemy import CheckConstraint, Column, String, Text, DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID
 from src.database import Base
 
 
 class SocialAccount(Base):
     __tablename__ = "social_accounts"
+    __table_args__ = (
+        CheckConstraint(
+            "platform IN ('X','LINKEDIN','INSTAGRAM')",
+            name="ck_social_accounts_platform",
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)

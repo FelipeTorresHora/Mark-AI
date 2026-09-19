@@ -2,21 +2,17 @@ import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { toast } from '../lib/toast';
+import type { BrandProfileSnapshot, CampaignAudience } from '../lib/brandContext';
 import type { PostsPerPlatform } from '../types';
 
-export interface BrandProfileSnapshot {
-    name: string;
-    niche: string;
-    tone: string;
-    target_audience: string;
-    unique_value: string;
-}
+export type { BrandProfileSnapshot } from '../lib/brandContext';
 
 export interface StartCampaignInput {
     /** Campaign-specific focus (maps to API `topic`). */
     campaignFocus: string;
     /** Strategic brand objective saved during onboarding (maps to API `objective`). */
     brandObjective?: string;
+    audience?: CampaignAudience;
     brandContext: BrandProfileSnapshot;
     postsPerPlatform: PostsPerPlatform;
 }
@@ -35,6 +31,7 @@ export function useStartCampaign() {
             const res = await api.post('/api/v1/generate', {
                 topic: input.campaignFocus.trim(),
                 objective: input.brandObjective?.trim() || undefined,
+                audience: input.audience,
                 brand_context: {
                     name: input.brandContext.name,
                     niche: input.brandContext.niche,
