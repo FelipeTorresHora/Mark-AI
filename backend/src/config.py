@@ -6,8 +6,11 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:8000"
     frontend_url: str = "http://localhost:5173"
     database_url: str = "postgresql://postgres:postgres@localhost:5432/marketing_db"
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash-lite"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5.6-luna"
+    langsmith_api_key: str = ""
+    langsmith_tracing: bool = False
+    langsmith_project: str = "mark"
     max_concurrent_generations: int = 5
     generation_timeout_seconds: int = 30
 

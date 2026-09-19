@@ -7,7 +7,13 @@ from src.dependencies.auth import get_current_user, get_user_from_token_query
 from src.models.campaign import Campaign
 from src.models.post import Post
 from src.models.user import User
-from src.schemas.generate import GenerateRequest, GenerateResponse
+from src.schemas.generate import (
+    GenerateRequest,
+    GenerateResponse,
+    HumanReviewRequest,
+    HumanReviewResponse,
+)
+from src.services.human_review import apply_human_review
 from src.services.sse import generation_stream
 
 router = APIRouter(prefix="/generate", tags=["generate"])
@@ -19,8 +25,11 @@ def start_generation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    objective = (request.objective or request.topic).strip()
     campaign = Campaign(
         topic=request.topic,
+        objective=objective,
+        audience=request.audience,
         brand_context=request.brand_context.model_dump(),
         status="PENDING",
         user_id=current_user.id,
@@ -30,8 +39,17 @@ def start_generation(
 
     posts: list[Post] = []
     for platform, count in request.posts_per_platform.model_dump().items():
+        if count <= 0:
+            continue
         for _ in range(count):
-            posts.append(Post(campaign_id=campaign.id, user_id=current_user.id, platform=platform, status="DRAFT"))
+            posts.append(
+                Post(
+                    campaign_id=campaign.id,
+                    user_id=current_user.id,
+                    platform=platform,
+                    status="DRAFT",
+                )
+            )
 
     db.add_all(posts)
     db.commit()
@@ -71,4 +89,58 @@ def stream_generation(
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+@router.post("/{campaign_id}/human", response_model=HumanReviewResponse)
+async def human_review(
+    campaign_id: str,
+    body: HumanReviewRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        uuid.UUID(campaign_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="campaign_id inválido")
+
+    campaign = db.query(Campaign).filter(
+        Campaign.id == campaign_id,
+        Campaign.user_id == current_user.id,
+    ).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+
+    if campaign.status != "AWAITING_REVIEW":
+        raise HTTPException(
+            status_code=422,
+            detail=f"Campanha não está aguardando revisão (status={campaign.status})",
+        )
+
+    try:
+        campaign, posts, awaiting = await apply_human_review(
+            db,
+            campaign,
+            action=body.action,
+            platform=body.platform.upper() if body.platform else None,
+            feedback=body.feedback,
+            langsmith_run_id=body.langsmith_run_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    return HumanReviewResponse(
+        campaign_id=campaign.id,
+        status=campaign.status,
+        awaiting_review=awaiting,
+        posts=[
+            {
+                "id": str(p.id),
+                "platform": p.platform,
+                "status": p.status,
+                "content": p.content,
+                "feedback": p.feedback,
+            }
+            for p in posts
+        ],
     )

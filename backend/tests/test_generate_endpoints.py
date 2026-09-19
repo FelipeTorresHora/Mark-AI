@@ -125,13 +125,25 @@ def test_generation_stream_processes_multiple_posts(
     x_posts = [post_factory(campaign, platform="X", content=None) for _ in range(2)]
     linkedin_posts = [post_factory(campaign, platform="LINKEDIN", content=None) for _ in range(3)]
 
-    async def fake_generate_post(platform, topic, brand_context):
-        return f"{platform} :: {topic}"
+    async def fake_run_until_review(**kwargs):
+        emitter = kwargs.get("emitter")
+        if emitter:
+            for platform in kwargs.get("platforms", []):
+                emitter("writer_start", platform, {"post_id": "1", "variant_index": 1, "platform_total": 1})
+                emitter(
+                    "writer_done",
+                    platform,
+                    {"post_id": "1", "content": f"{platform} :: ok", "variant_index": 1, "platform_total": 1},
+                )
+        return {
+            "platform_contents": {p: f"{p} :: ok" for p in kwargs.get("platforms", [])},
+            "__interrupt__": [object()],
+        }
 
     async def collect_events():
         return [event async for event in generation_stream(str(campaign.id), db_session)]
 
-    monkeypatch.setattr("src.services.sse.generate_post", fake_generate_post)
+    monkeypatch.setattr("src.services.sse.run_until_review", fake_run_until_review)
 
     events = asyncio.run(collect_events())
     db_session.refresh(campaign)
@@ -141,4 +153,5 @@ def test_generation_stream_processes_multiple_posts(
 
     assert len([event for event in events if '"event": "writer_done"' in event]) == 5
     assert campaign.status == "DONE"
-    assert all(post.status == "APPROVED" for post in all_posts)
+    assert all(post.status == "UNDER_REVIEW" for post in all_posts)
+    assert campaign.status == "AWAITING_REVIEW"
