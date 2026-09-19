@@ -17,6 +17,7 @@ from src.schemas.oauth import OAuthAuthorizationUrlResponse
 from src.schemas.publish import PublishResponse
 from src.schemas.social_account import SocialAccountResponse
 from src.services import oauth_instagram, oauth_linkedin, oauth_x
+from src.services.instagram_publish import InstagramPublishError
 from src.services.oauth_state import build_state, parse_state
 from src.services.social_crypto import decrypt_social_token, encrypt_social_token
 from src.services.x_publish import get_active_x_account, publish_x_post_record
@@ -30,11 +31,25 @@ _OAUTH_ALLOWED_HOSTS = {
 }
 
 
-def _frontend_settings_redirect(frontend_origin: str | None = None, **params: str) -> RedirectResponse:
+def _frontend_settings_redirect(
+    frontend_origin: str | None = None,
+    *,
+    path: str | None = None,
+    **params: str,
+) -> RedirectResponse:
     query = urlencode(params)
+    destination = path or "/configuracoes"
     return RedirectResponse(
-        f"{frontend_origin or settings.frontend_url}/configuracoes?{query}",
+        f"{frontend_origin or settings.frontend_url}{destination}?{query}",
         status_code=status.HTTP_302_FOUND,
+    )
+
+
+def _frontend_instagram_redirect(frontend_origin: str | None = None, **params: str) -> RedirectResponse:
+    return _frontend_settings_redirect(
+        frontend_origin,
+        path="/oauth/callback/instagram",
+        **params,
     )
 
 
@@ -298,10 +313,9 @@ def callback_instagram(
 ):
     if error:
         detail = error_description or error
-        return _frontend_settings_redirect(
+        return _frontend_instagram_redirect(
             error=detail,
             provider="instagram",
-            frontend_origin=None,
         )
     if not code or not state:
         raise HTTPException(status_code=400, detail="Callback do Instagram incompleto")
@@ -314,7 +328,7 @@ def callback_instagram(
     try:
         token_data = oauth_instagram.exchange_code_for_token(code)
     except Exception:
-        return _frontend_settings_redirect(
+        return _frontend_instagram_redirect(
             error="Falha ao trocar código pelo token Instagram",
             provider="instagram",
             frontend_origin=parsed.get("frontend_origin"),
@@ -322,23 +336,27 @@ def callback_instagram(
 
     user_access_token = token_data["access_token"]
     expires_in = token_data.get("expires_in")
+    page_token_is_long_lived = False
     try:
         long_lived = oauth_instagram.exchange_long_lived_token(user_access_token)
         user_access_token = long_lived.get("access_token", user_access_token)
         expires_in = long_lived.get("expires_in", expires_in)
+        page_token_is_long_lived = True
     except Exception:
         pass
 
     try:
         user_info = oauth_instagram.get_user_info(user_access_token)
     except Exception:
-        return _frontend_settings_redirect(
+        return _frontend_instagram_redirect(
             error="Falha ao obter conta Instagram Business/Creator",
             provider="instagram",
             frontend_origin=parsed.get("frontend_origin"),
         )
 
     page_access_token = user_info.get("page_access_token") or user_access_token
+    # Page tokens derived from a long-lived user token do not expire by time.
+    stored_expires_in = None if page_token_is_long_lived else expires_in
 
     _upsert_social_account(
         db=db,
@@ -347,11 +365,11 @@ def callback_instagram(
         platform_user_id=user_info.get("id", ""),
         access_token=page_access_token,
         refresh_token=token_data.get("refresh_token"),
-        expires_in=expires_in,
+        expires_in=stored_expires_in,
         scope=settings.instagram_scopes,
     )
 
-    return _frontend_settings_redirect(
+    return _frontend_instagram_redirect(
         connected="instagram",
         frontend_origin=parsed.get("frontend_origin"),
     )
@@ -469,14 +487,6 @@ def publish_post(
                 status_code=400,
                 detail="Token LINKEDIN expirado. Reconecte a conta em Configurações.",
             )
-    elif post.platform == "INSTAGRAM" and account.expires_at:
-        if account.expires_at <= datetime.now(timezone.utc).replace(tzinfo=None):
-            account.last_error = "instagram_reconnect_required"
-            db.commit()
-            raise HTTPException(
-                status_code=400,
-                detail="Token INSTAGRAM expirado. Reconecte a conta em Configurações.",
-            )
 
     content = (post.content or "").strip()
     if not content:
@@ -509,6 +519,16 @@ def publish_post(
                 status_code=400,
                 detail=f"Plataforma {post.platform} não suportada para publicação.",
             )
+    except InstagramPublishError as exc:
+        if exc.graph_code == 190:
+            account.last_error = "instagram_reconnect_required"
+        else:
+            account.last_error = str(exc)
+        db.commit()
+        raise HTTPException(
+            status_code=400 if exc.graph_code == 190 else 502,
+            detail=str(exc),
+        )
     except Exception as exc:
         account.last_error = str(exc)
         db.commit()

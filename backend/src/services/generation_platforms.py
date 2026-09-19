@@ -1,8 +1,6 @@
 """Decide which platforms participate in copy generation (Instagram is optional)."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from sqlalchemy.orm import Session
 
 from src.config import settings
@@ -22,15 +20,9 @@ def instagram_generation_block_reason(db: Session, user_id) -> str | None:
     if account is None:
         return "Conta Instagram não conectada — geração ignorada."
 
-    if account.expires_at is not None:
-        expires = account.expires_at
-        if expires.tzinfo is None:
-            expires = expires.replace(tzinfo=timezone.utc)
-        if expires <= datetime.now(timezone.utc):
-            return "Token Instagram expirado — reconecte em Configurações."
-
-    if account.last_error:
-        return "Credenciais Instagram inválidas — reconecte em Configurações."
+    # Long-lived Page tokens do not expire by time; Graph error 190 is the reconnect signal.
+    if account.last_error in {"instagram_reconnect_required", "invalid_token"}:
+        return "Credenciais Instagram inválidas — reconecte em Empresa."
 
     return None
 

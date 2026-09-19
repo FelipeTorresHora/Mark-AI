@@ -48,6 +48,11 @@ function SocialAccountsSection() {
             label: 'LinkedIn',
             description: 'Distribua seus posts finais no LinkedIn sem sair da plataforma.',
         },
+        {
+            id: 'INSTAGRAM',
+            label: 'Instagram',
+            description: 'Publique no feed com conta Business ou Creator ligada a uma Página.',
+        },
     ];
 
     return (

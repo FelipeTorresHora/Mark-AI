@@ -456,7 +456,7 @@ def test_callback_instagram_persists_account_and_redirects(
     )
 
     assert response.status_code == 302
-    assert response.headers["location"].endswith("/configuracoes?connected=instagram")
+    assert "/oauth/callback/instagram?connected=instagram" in response.headers["location"]
 
     from src.services.social_crypto import decrypt_social_token
 
@@ -465,6 +465,7 @@ def test_callback_instagram_persists_account_and_redirects(
     assert account.platform == "INSTAGRAM"
     assert account.platform_user_id == "ig-user-1"
     assert decrypt_social_token(account.access_token) == "page-token-ig"
+    assert account.expires_at is None
 
 
 def test_publish_post_to_instagram_updates_post(
@@ -499,3 +500,34 @@ def test_publish_post_to_instagram_updates_post(
 
     db_session.refresh(post)
     assert post.status == "PUBLISHED"
+
+
+def test_publish_post_to_instagram_ignores_stale_page_token_expiry(
+    client,
+    user_factory,
+    campaign_factory,
+    post_factory,
+    social_account_factory,
+    auth_headers,
+    monkeypatch,
+    expired_datetime,
+):
+    user = user_factory()
+    campaign = campaign_factory(user)
+    post = post_factory(campaign, platform="INSTAGRAM", status="FINAL", content="Legenda IG")
+    social_account_factory(
+        user,
+        platform="INSTAGRAM",
+        platform_user_id="ig-123",
+        access_token="token-ig",
+        expires_at=expired_datetime,
+    )
+    monkeypatch.setattr(
+        "src.routers.social.oauth_instagram.publish_post",
+        lambda token, ig_user_id, text: "ig-media-stale-expiry",
+    )
+
+    response = client.post(f"/api/v1/social/posts/{post.id}/publish", headers=auth_headers(user))
+
+    assert response.status_code == 200
+    assert response.json()["platform_post_id"] == "ig-media-stale-expiry"

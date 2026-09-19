@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     instagram_app_id: str = ""
     instagram_app_secret: str = ""
     instagram_redirect_uri: str = "http://localhost:8000/api/v1/social/callback/instagram"
-    instagram_graph_api_version: str = "v21.0"
+    instagram_graph_api_version: str = "v23.0"
     instagram_scopes: str = (
         "instagram_basic,instagram_content_publish,pages_show_list,"
         "pages_read_engagement,business_management"
