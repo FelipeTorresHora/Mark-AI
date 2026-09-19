@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { bootstrapAuthSession } from '../lib/authBootstrap';
 import { useAppStore } from '../store/useAppStore';
 import { showSuccess } from '../lib/toast';
+import { isOnboardingComplete } from '../lib/onboarding';
 
 type AuthLoginResponse = {
     access_token: string;
@@ -22,13 +23,19 @@ export function useAuth() {
     }, []);
 
     const login = useCallback(
-        async (email: string, password: string) => {
+        async (email: string, password: string, options?: { redirectTo?: string }) => {
             const res = await api.post<AuthLoginResponse>('/api/v1/auth/login', { email, password });
             const token: string = res.data.access_token;
             const profile = res.data.user;
             setAuth({ id: profile.id, email: profile.email }, token);
             showSuccess('Login realizado com sucesso!');
-            navigate('/campanhas');
+
+            if (options?.redirectTo) {
+                navigate(options.redirectTo);
+                return;
+            }
+
+            navigate(isOnboardingComplete(profile.id) ? '/campanhas' : '/onboarding');
         },
         [setAuth, navigate],
     );
@@ -36,8 +43,7 @@ export function useAuth() {
     const register = useCallback(
         async (email: string, password: string) => {
             await api.post('/api/v1/auth/register', { email, password });
-            // Auto-login after registration
-            await login(email, password);
+            await login(email, password, { redirectTo: '/onboarding' });
         },
         [login],
     );

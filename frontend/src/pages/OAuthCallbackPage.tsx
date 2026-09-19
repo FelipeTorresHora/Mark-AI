@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { showSuccess, showError } from '../lib/toast';
+import { consumeOAuthReturnPath, isOnboardingComplete } from '../lib/onboarding';
+import { useAppStore } from '../store/useAppStore';
 
 interface OAuthCallbackPageProps {
     platform: 'x' | 'linkedin' | 'instagram';
@@ -33,7 +35,13 @@ export function OAuthCallbackPage({ platform }: OAuthCallbackPageProps) {
             showError(`Erro ao conectar ${platform.toUpperCase()}: ${error}`);
         }
 
-        navigate('/empresa', { replace: true });
+        const oauthReturn = consumeOAuthReturnPath();
+        const userId = useAppStore.getState().user?.id;
+        const destination =
+            oauthReturn ??
+            (userId && !isOnboardingComplete(userId) ? '/onboarding?step=accounts' : '/empresa');
+
+        navigate(destination, { replace: true });
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (

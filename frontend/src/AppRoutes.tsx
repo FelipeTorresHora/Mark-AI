@@ -9,6 +9,7 @@ import { useAppStore } from './store/useAppStore';
 import { bootstrapAuthSession, isPublicAppPath } from './lib/authBootstrap';
 import { MainLayout } from './components/layout/MainLayout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { RequireOnboardingComplete } from './components/auth/RequireOnboardingComplete';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
 const ObjectivePage = lazy(() => import('./pages/ObjectivePage').then((m) => ({ default: m.ObjectivePage })));
@@ -25,6 +26,7 @@ const OAuthCallbackPage = lazy(() =>
     import('./pages/OAuthCallbackPage').then((m) => ({ default: m.OAuthCallbackPage })),
 );
 const LandingPage = lazy(() => import('./pages/LandingPage').then((m) => ({ default: m.LandingPage })));
+const OnboardingPage = lazy(() => import('./pages/OnboardingPage').then((m) => ({ default: m.OnboardingPage })));
 
 function PageLoader() {
     return (
@@ -87,8 +89,23 @@ export const router = createBrowserRouter([
 
     // Rotas protegidas (ProtectedLayout como wrapper pathless)
     {
-        element: <ProtectedLayout />,
-        children: protectedRoutes,
+        element: (
+            <ProtectedRoute>
+                <Outlet />
+            </ProtectedRoute>
+        ),
+        children: [
+            { path: '/onboarding', element: <LazyPage><OnboardingPage /></LazyPage> },
+            {
+                element: <RequireOnboardingComplete />,
+                children: [
+                    {
+                        element: <ProtectedLayout />,
+                        children: protectedRoutes,
+                    },
+                ],
+            },
+        ],
     },
 
     // Catch-all → redireciona para campanhas

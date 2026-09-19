@@ -1,95 +1,21 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
-import { useSocialAccounts, useDisconnectSocial, useStartSocialConnect } from '../../hooks/useSocialAccounts';
-import { useDisconnectX, useStartXConnect, useXIntegrationStatus } from '../../hooks/useXIntegration';
+import { SocialConnectList } from '../social/SocialConnectList';
 import { Button } from '../common/Button';
 import { BrandContextSchema, type BrandContextFormData } from '../../lib/schemas';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { Settings, CheckCircle2, Pencil, X } from 'lucide-react';
+import { Settings, Pencil, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { toast } from '../../lib/toast';
 import { isNotFoundError } from '../../lib/utils';
-import type { SocialAccount } from '../../types';
-
 interface BrandProfile {
     name: string;
     niche: string;
     tone: string;
     target_audience: string;
     unique_value: string;
-}
-
-function SocialAccountsCompact() {
-    const { data: accounts = [] } = useSocialAccounts();
-    const { data: xStatus } = useXIntegrationStatus();
-    const disconnect = useDisconnectSocial();
-    const startConnect = useStartSocialConnect();
-    const disconnectX = useDisconnectX();
-    const startXConnect = useStartXConnect();
-
-    const isConnected = (platform: string) => {
-        if (platform === 'X') return !!xStatus?.connected;
-        return accounts.some((a: SocialAccount) => a.platform === platform);
-    };
-
-    const handleConnect = async (platform: string) => {
-        try {
-            if (platform === 'X') {
-                const { authorization_url } = await startXConnect.mutateAsync();
-                window.location.assign(authorization_url);
-                return;
-            }
-            const { authorization_url } = await startConnect.mutateAsync(platform);
-            window.location.assign(authorization_url);
-        } catch {
-            toast.error('Erro ao iniciar conexão.');
-        }
-    };
-
-    const platforms = [
-        { id: 'X', label: 'X (Twitter)' },
-        { id: 'LINKEDIN', label: 'LinkedIn' },
-        { id: 'INSTAGRAM', label: 'Instagram' },
-    ];
-
-    return (
-        <div className="space-y-2">
-            {platforms.map(({ id, label }) => {
-                const connected = isConnected(id);
-                return (
-                    <div key={id} className="flex items-center justify-between px-3 py-2 rounded-lg app-panel-subtle">
-                        <div className="flex items-center gap-2">
-                            {connected ? (
-                                <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
-                            ) : (
-                                <div className="w-3.5 h-3.5 rounded-full border app-divider-strong shrink-0" />
-                            )}
-                            <span className="text-xs font-medium app-text-secondary">{label}</span>
-                        </div>
-                        {connected ? (
-                            <button
-                                onClick={() => id === 'X' ? disconnectX.mutate() : disconnect.mutate(id)}
-                                disabled={disconnect.isPending || disconnectX.isPending}
-                                className="text-[10px] text-rose-500 hover:text-rose-700 font-medium transition-colors"
-                            >
-                                Desconectar
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => handleConnect(id)}
-                                disabled={startConnect.isPending || startXConnect.isPending}
-                                className="text-[10px] text-primary-500 hover:text-primary-700 font-medium transition-colors"
-                            >
-                                Conectar
-                            </button>
-                        )}
-                    </div>
-                );
-            })}
-        </div>
-    );
 }
 
 function BrandProfileCard({ profile }: { profile: BrandProfile | null }) {
@@ -265,7 +191,7 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
 
                         <div className="pt-4 border-t app-divider">
                             <h4 className="text-xs font-semibold app-text-muted uppercase tracking-wider mb-3">Contas Sociais</h4>
-                            <SocialAccountsCompact />
+                            <SocialConnectList />
                         </div>
                     </div>
                 </div>
