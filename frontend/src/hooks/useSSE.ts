@@ -61,7 +61,7 @@ export function useSSE(endpoint: string | null): SSEState {
     const esRef = useRef<EventSource | null>(null);
 
     useEffect(() => {
-        setState(createInitialState());
+        queueMicrotask(() => setState(createInitialState()));
         if (!endpoint) return;
 
         const es = new EventSource(endpoint);

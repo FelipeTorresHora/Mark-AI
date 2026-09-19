@@ -222,7 +222,11 @@ function XComposer() {
     const trimmed = content.trim();
     const isOverLimit = content.length > 280;
     const hasSchedule = scheduledAt.length > 0;
-    const scheduleIsPast = hasSchedule && new Date(scheduledAt).getTime() <= Date.now();
+    const scheduleIsPast = Boolean(
+        hasSchedule &&
+            // eslint-disable-next-line react-hooks/purity -- schedule validation needs current time
+            new Date(scheduledAt).getTime() <= Date.now(),
+    );
     const disabled = !trimmed || isOverLimit || !xStatus?.connected || publishNow.isPending || schedulePost.isPending;
 
     async function submitNow() {

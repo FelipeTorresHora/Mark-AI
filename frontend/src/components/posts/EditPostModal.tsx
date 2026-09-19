@@ -43,7 +43,12 @@ export function EditPostModal({ post, onClose, initialMode = 'edit' }: EditPostM
     const charCount = content.length;
     const isX = post?.platform === 'X';
     const isOverLimit = isX && charCount > 280;
-    const scheduleIsPast = scheduleEnabled && scheduledAt && new Date(scheduledAt).getTime() <= Date.now();
+    const scheduleIsPast = Boolean(
+        scheduleEnabled &&
+            scheduledAt &&
+            // eslint-disable-next-line react-hooks/purity -- schedule validation needs current time
+            new Date(scheduledAt).getTime() <= Date.now(),
+    );
     const canCancelSchedule = isX && !!post?.scheduled_at && ['pending', 'failed'].includes(post.publish_status ?? 'pending');
 
     return (
