@@ -46,7 +46,7 @@ function TemplateCustomizeForm({
 
     function handleConfirm() {
         if (!isValid) return;
-        navigate('/campanhas', { state: { topic: filledBody } });
+        navigate('/objetivo', { state: { topic: filledBody } });
         onClose();
     }
 
