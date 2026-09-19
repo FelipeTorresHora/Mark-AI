@@ -16,7 +16,7 @@ from src.models.user import User
 from src.schemas.oauth import OAuthAuthorizationUrlResponse
 from src.schemas.publish import PublishResponse
 from src.schemas.social_account import SocialAccountResponse
-from src.services import oauth_linkedin, oauth_x
+from src.services import oauth_instagram, oauth_linkedin, oauth_x
 from src.services.oauth_state import build_state, parse_state
 from src.services.social_crypto import decrypt_social_token, encrypt_social_token
 from src.services.x_publish import get_active_x_account, publish_x_post_record
@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/v1/social", tags=["social"])
 _OAUTH_ALLOWED_HOSTS = {
     "X": {"twitter.com", "x.com"},
     "LINKEDIN": {"www.linkedin.com", "linkedin.com"},
+    "INSTAGRAM": {"www.facebook.com", "facebook.com", "m.facebook.com"},
 }
 
 
@@ -78,6 +79,12 @@ def _build_linkedin_authorization_url(user_id: str, frontend_origin: str | None 
     state_token = build_state(user_id, "LINKEDIN", frontend_origin=frontend_origin)
     url = oauth_linkedin.get_authorization_url(state_token)
     return _validate_oauth_url(url, "LINKEDIN")
+
+
+def _build_instagram_authorization_url(user_id: str, frontend_origin: str | None = None) -> str:
+    state_token = build_state(user_id, "INSTAGRAM", frontend_origin=frontend_origin)
+    url = oauth_instagram.get_authorization_url(state_token)
+    return _validate_oauth_url(url, "INSTAGRAM")
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +264,89 @@ def callback_linkedin(
 
 
 # ---------------------------------------------------------------------------
+# Instagram (Meta Graph) OAuth 2.0
+# ---------------------------------------------------------------------------
+
+@router.get("/connect/instagram")
+def connect_instagram(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    url = _build_instagram_authorization_url(str(current_user.id), _get_frontend_origin(request))
+    return RedirectResponse(url, status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/connect/instagram/url", response_model=OAuthAuthorizationUrlResponse)
+def connect_instagram_url(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    return OAuthAuthorizationUrlResponse(
+        authorization_url=_build_instagram_authorization_url(
+            str(current_user.id), _get_frontend_origin(request)
+        )
+    )
+
+
+@router.get("/callback/instagram")
+def callback_instagram(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+    db: Session = Depends(get_db),
+):
+    if error:
+        detail = error_description or error
+        return _frontend_settings_redirect(
+            error=detail,
+            provider="instagram",
+            frontend_origin=None,
+        )
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Callback do Instagram incompleto")
+
+    try:
+        parsed = parse_state(state, "INSTAGRAM")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="State inválido")
+
+    try:
+        token_data = oauth_instagram.exchange_code_for_token(code)
+    except Exception:
+        return _frontend_settings_redirect(
+            error="Falha ao trocar código pelo token Instagram",
+            provider="instagram",
+            frontend_origin=parsed.get("frontend_origin"),
+        )
+
+    try:
+        user_info = oauth_instagram.get_user_info(token_data["access_token"])
+    except Exception:
+        return _frontend_settings_redirect(
+            error="Falha ao obter conta Instagram Business/Creator",
+            provider="instagram",
+            frontend_origin=parsed.get("frontend_origin"),
+        )
+
+    _upsert_social_account(
+        db=db,
+        user_id=parsed["user_id"],
+        platform="INSTAGRAM",
+        platform_user_id=user_info.get("id", ""),
+        access_token=token_data["access_token"],
+        refresh_token=token_data.get("refresh_token"),
+        expires_in=token_data.get("expires_in"),
+        scope=settings.instagram_scopes,
+    )
+
+    return _frontend_settings_redirect(
+        connected="instagram",
+        frontend_origin=parsed.get("frontend_origin"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Disconnect
 # ---------------------------------------------------------------------------
 
@@ -368,21 +458,45 @@ def publish_post(
                 status_code=400,
                 detail="Token LINKEDIN expirado. Reconecte a conta em Configurações.",
             )
+    elif post.platform == "INSTAGRAM" and account.expires_at:
+        if account.expires_at <= datetime.now(timezone.utc).replace(tzinfo=None):
+            account.last_error = "instagram_reconnect_required"
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail="Token INSTAGRAM expirado. Reconecte a conta em Configurações.",
+            )
 
     content = (post.content or "").strip()
     if not content:
         raise HTTPException(status_code=422, detail="Conteúdo do post é obrigatório para publicação.")
     if post.platform == "X" and len(content) > 280:
         raise HTTPException(status_code=422, detail="Posts do X devem ter no máximo 280 caracteres.")
+    if post.platform == "INSTAGRAM" and len(content) > 2200:
+        raise HTTPException(
+            status_code=422,
+            detail="Legendas do Instagram devem ter no máximo 2200 caracteres.",
+        )
 
     # Publish
     try:
         if post.platform == "X":
             platform_post_id = oauth_x.post_tweet(access_token or "", content)
-        else:
+        elif post.platform == "LINKEDIN":
             author_urn = f"urn:li:person:{account.platform_user_id}"
             platform_post_id = oauth_linkedin.publish_post(
                 access_token or "", author_urn, content
+            )
+        elif post.platform == "INSTAGRAM":
+            platform_post_id = oauth_instagram.publish_post(
+                access_token or "",
+                account.platform_user_id,
+                content,
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Plataforma {post.platform} não suportada para publicação.",
             )
     except Exception as exc:
         account.last_error = str(exc)

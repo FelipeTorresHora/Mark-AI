@@ -1,4 +1,4 @@
-export type Platform = "X" | "LINKEDIN";
+export type Platform = "X" | "LINKEDIN" | "INSTAGRAM";
 export type PostStatus = "DRAFT" | "UNDER_REVIEW" | "APPROVED" | "REJECTED" | "FINAL" | "PUBLISHED";
 export type PublishStatus = "pending" | "processing" | "published" | "failed" | "canceled";
 export type AppPhase = "BRIEFING" | "STRATEGY" | "GENERATION" | "REVIEW";

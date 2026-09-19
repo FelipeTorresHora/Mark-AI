@@ -77,6 +77,10 @@ export const router = createBrowserRouter([
         path: '/oauth/callback/linkedin',
         element: <LazyPage><OAuthCallbackPage platform="linkedin" /></LazyPage>,
     },
+    {
+        path: '/oauth/callback/instagram',
+        element: <LazyPage><OAuthCallbackPage platform="instagram" /></LazyPage>,
+    },
 
     // Rotas protegidas (ProtectedLayout como wrapper pathless)
     {

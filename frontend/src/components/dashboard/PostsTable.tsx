@@ -1,7 +1,6 @@
 import { type Post } from '../../types';
 import { Card } from '../common/Card';
-import { XPreview } from '../previews/XPreview';
-import { LinkedInPreview } from '../previews/LinkedInPreview';
+import { PostPreview } from '../../lib/postPreview';
 import { ScoreIndicator } from '../ui/ScoreIndicator';
 import { Button } from '../common/Button';
 import { Check, X } from 'lucide-react';
@@ -25,15 +24,10 @@ export function PostsTable({ posts, onApprove, onReject, isApproving, isRejectin
 
     return (
         <div className="space-y-6">
-            {posts.map(post => {
-                const isX = post.platform === 'X';
-                return (
+            {posts.map(post => (
                     <Card key={post.id} className="p-0 overflow-hidden border-slate-200 dark:border-slate-700/50 flex flex-col md:flex-row group transition-all duration-300">
                         <div className="p-6 md:flex-1 md:border-r border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-black/40 flex items-center justify-center">
-                            {isX
-                                ? <XPreview content={post.content ?? ''} />
-                                : <LinkedInPreview content={post.content ?? ''} />
-                            }
+                            <PostPreview platform={post.platform} content={post.content ?? ''} />
                         </div>
 
                         <div className="p-6 md:w-72 flex flex-col justify-between">
@@ -73,8 +67,7 @@ export function PostsTable({ posts, onApprove, onReject, isApproving, isRejectin
                             </div>
                         </div>
                     </Card>
-                );
-            })}
+            ))}
         </div>
     );
 }

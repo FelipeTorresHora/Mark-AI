@@ -18,7 +18,7 @@ import {
     isToday,
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Twitter, Linkedin, CalendarDays, LayoutGrid } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Twitter, Linkedin, Camera, CalendarDays, LayoutGrid } from 'lucide-react';
 import { usePosts } from '../hooks/usePosts';
 import { type Post } from '../types';
 import { EditPostModal } from '../components/posts/EditPostModal';
@@ -36,6 +36,11 @@ const PLATFORM_STYLES = {
         dot: 'bg-[#0a66c2]',
         chip: 'bg-[#0a66c2] text-white',
         icon: Linkedin,
+    },
+    INSTAGRAM: {
+        dot: 'bg-gradient-to-r from-[#f9ce34] via-[#ee2a7b] to-[#6228d7]',
+        chip: 'bg-gradient-to-r from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] text-white',
+        icon: Camera,
     },
 } as const;
 

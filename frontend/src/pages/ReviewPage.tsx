@@ -6,8 +6,8 @@ import { usePostActions } from '../hooks/usePostActions';
 import { useCampaign } from '../hooks/useCampaigns';
 import { usePublishPost } from '../hooks/useSocialAccounts';
 import { useEditPost } from '../hooks/useEditPost';
-import { XPreview } from '../components/previews/XPreview';
-import { LinkedInPreview } from '../components/previews/LinkedInPreview';
+import { PostPreview } from '../lib/postPreview';
+import { platformLabel } from '../lib/platformLabel';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { cn, formatScheduledAt } from '../lib/utils';
@@ -69,7 +69,10 @@ const PostCard = memo(function PostCard({
     }
 
     const isX = post.platform === 'X';
-    const isOverLimit = isX && editContent.length > 280;
+    const isInstagram = post.platform === 'INSTAGRAM';
+    const isOverLimit =
+        (isX && editContent.length > 280) ||
+        (isInstagram && editContent.length > 2200);
 
     return (
         <div className={cn('rounded-[28px] border p-6 transition-all', {
@@ -81,7 +84,7 @@ const PostCard = memo(function PostCard({
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-bold app-text-secondary">
-                        {isX ? 'Twitter / X' : 'LinkedIn'}
+                        {platformLabel(post.platform)}
                     </span>
                     <ScoreBadge score={post.score} />
                     {isFinal && <span className="app-chip app-chip-success"><CheckCircle size={10} /> Aprovado</span>}
@@ -104,19 +107,12 @@ const PostCard = memo(function PostCard({
             )}
 
             <div className="mb-5">
-                {isX ? (
-                    <XPreview
-                        content={isEditMode ? editContent : (post.content || '')}
-                        editable={isEditMode}
-                        onContentChange={setEditContent}
-                    />
-                ) : (
-                    <LinkedInPreview
-                        content={isEditMode ? editContent : (post.content || '')}
-                        editable={isEditMode}
-                        onContentChange={setEditContent}
-                    />
-                )}
+                <PostPreview
+                    platform={post.platform}
+                    content={isEditMode ? editContent : (post.content || '')}
+                    editable={isEditMode}
+                    onContentChange={setEditContent}
+                />
             </div>
 
             {/* Schedule panel */}
@@ -269,6 +265,12 @@ export const ReviewPage = () => {
             platform: 'LINKEDIN',
             title: 'Variantes para LinkedIn',
             items: [...(posts?.filter(post => post.platform === 'LINKEDIN') ?? [])]
+                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+        },
+        {
+            platform: 'INSTAGRAM',
+            title: 'Variantes para Instagram',
+            items: [...(posts?.filter(post => post.platform === 'INSTAGRAM') ?? [])]
                 .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
         },
     ];

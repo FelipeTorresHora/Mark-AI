@@ -51,6 +51,7 @@ function SocialAccountsCompact() {
     const platforms = [
         { id: 'X', label: 'X (Twitter)' },
         { id: 'LINKEDIN', label: 'LinkedIn' },
+        { id: 'INSTAGRAM', label: 'Instagram' },
     ];
 
     return (

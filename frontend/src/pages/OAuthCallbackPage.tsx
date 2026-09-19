@@ -5,8 +5,14 @@ import { Loader2 } from 'lucide-react';
 import { showSuccess, showError } from '../lib/toast';
 
 interface OAuthCallbackPageProps {
-    platform: 'x' | 'linkedin';
+    platform: 'x' | 'linkedin' | 'instagram';
 }
+
+const CONNECTED_LABELS: Record<string, string> = {
+    x: 'X (Twitter)',
+    linkedin: 'LinkedIn',
+    instagram: 'Instagram',
+};
 
 export function OAuthCallbackPage({ platform }: OAuthCallbackPageProps) {
     const navigate = useNavigate();
@@ -18,7 +24,7 @@ export function OAuthCallbackPage({ platform }: OAuthCallbackPageProps) {
         const error = searchParams.get('error');
 
         if (connected) {
-            const label = connected.toUpperCase() === 'X' ? 'X (Twitter)' : 'LinkedIn';
+            const label = CONNECTED_LABELS[connected.toLowerCase()] ?? connected;
             showSuccess(`${label} conectado com sucesso!`);
             queryClient.invalidateQueries({ queryKey: ['social-accounts'] });
         }
