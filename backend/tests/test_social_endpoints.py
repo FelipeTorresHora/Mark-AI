@@ -434,11 +434,19 @@ def test_callback_instagram_persists_account_and_redirects(
     state = build_state(str(user.id), "INSTAGRAM")
     monkeypatch.setattr(
         "src.routers.social.oauth_instagram.exchange_code_for_token",
-        lambda code: {"access_token": "token-ig", "expires_in": 5184000},
+        lambda code: {"access_token": "token-ig", "expires_in": 3600},
+    )
+    monkeypatch.setattr(
+        "src.routers.social.oauth_instagram.exchange_long_lived_token",
+        lambda token: {"access_token": "long-token-ig", "expires_in": 5184000},
     )
     monkeypatch.setattr(
         "src.routers.social.oauth_instagram.get_user_info",
-        lambda access_token: {"id": "ig-user-1", "username": "markai"},
+        lambda access_token: {
+            "id": "ig-user-1",
+            "username": "markai",
+            "page_access_token": "page-token-ig",
+        },
     )
 
     response = client.get(
@@ -450,10 +458,13 @@ def test_callback_instagram_persists_account_and_redirects(
     assert response.status_code == 302
     assert response.headers["location"].endswith("/configuracoes?connected=instagram")
 
+    from src.services.social_crypto import decrypt_social_token
+
     account = db_session.query(SocialAccount).filter(SocialAccount.user_id == user.id).first()
     assert account is not None
     assert account.platform == "INSTAGRAM"
     assert account.platform_user_id == "ig-user-1"
+    assert decrypt_social_token(account.access_token) == "page-token-ig"
 
 
 def test_publish_post_to_instagram_updates_post(

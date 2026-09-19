@@ -1,4 +1,4 @@
-from src.services import oauth_instagram, oauth_linkedin
+from src.services import instagram_publish, oauth_instagram, oauth_linkedin
 
 
 class _DummyResponse:
@@ -71,6 +71,10 @@ class _InstagramGraphClient:
         self.get_calls.append({"url": url, "params": params})
         if url.endswith("me/accounts"):
             return _InstagramAccountsResponse()
+        if "fields" in (params or {}) and "status_code" in (params or {}).get("fields", ""):
+            return _InstagramContainerStatusResponse()
+        if url.endswith("oauth/access_token") and (params or {}).get("grant_type") == "fb_exchange_token":
+            return _InstagramLongLivedTokenResponse()
         raise AssertionError(f"unexpected GET {url}")
 
     def post(self, url, params=None):
@@ -90,13 +94,30 @@ class _InstagramAccountsResponse:
         return {
             "data": [
                 {
+                    "access_token": "page-token-1",
                     "instagram_business_account": {
                         "id": "17841400000000000",
                         "username": "markai",
-                    }
+                    },
                 }
             ]
         }
+
+
+class _InstagramLongLivedTokenResponse:
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {"access_token": "long-lived-user-token", "expires_in": 5184000}
+
+
+class _InstagramContainerStatusResponse:
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {"status_code": "FINISHED"}
 
 
 class _InstagramMediaCreateResponse:
@@ -123,20 +144,44 @@ def test_instagram_get_user_info_returns_business_account_id(monkeypatch):
 
     assert info["id"] == "17841400000000000"
     assert info["username"] == "markai"
+    assert info["page_access_token"] == "page-token-1"
     assert "me/accounts" in client.get_calls[0]["url"]
+    assert "access_token" in client.get_calls[0]["params"]["fields"]
 
 
-def test_instagram_publish_post_creates_and_publishes_media(monkeypatch):
+def test_instagram_exchange_long_lived_token(monkeypatch):
     client = _InstagramGraphClient()
     monkeypatch.setattr("src.services.oauth_instagram.httpx.Client", lambda: client)
+
+    data = oauth_instagram.exchange_long_lived_token("short-token")
+
+    assert data["access_token"] == "long-lived-user-token"
+    assert data["expires_in"] == 5184000
+
+
+def test_instagram_publish_feed_post_creates_and_publishes_media(monkeypatch):
+    client = _InstagramGraphClient()
+    monkeypatch.setattr("src.services.instagram_publish.httpx.Client", lambda *args, **kwargs: client)
     monkeypatch.setattr(
-        "src.services.oauth_instagram.settings.instagram_publish_image_url",
+        "src.services.instagram_publish.settings.instagram_publish_image_url",
         "https://example.com/placeholder.jpg",
     )
 
-    media_id = oauth_instagram.publish_post("token-ig", "17841400000000000", "Legenda")
+    media_id = instagram_publish.publish_feed_post(
+        "page-token-1", "17841400000000000", "Legenda"
+    )
 
     assert media_id == "media-99"
     assert len(client.post_calls) == 2
     assert client.post_calls[0]["params"]["caption"] == "Legenda"
+    assert client.post_calls[0]["params"]["access_token"] == "page-token-1"
     assert client.post_calls[1]["params"]["creation_id"] == "creation-1"
+
+
+def test_instagram_publish_post_delegates_to_feed_publish(monkeypatch):
+    monkeypatch.setattr(
+        "src.services.instagram_publish.publish_feed_post",
+        lambda token, ig_id, caption: "delegated-media",
+    )
+
+    assert oauth_instagram.publish_post("t", "ig", "cap") == "delegated-media"

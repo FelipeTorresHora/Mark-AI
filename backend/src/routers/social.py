@@ -320,8 +320,17 @@ def callback_instagram(
             frontend_origin=parsed.get("frontend_origin"),
         )
 
+    user_access_token = token_data["access_token"]
+    expires_in = token_data.get("expires_in")
     try:
-        user_info = oauth_instagram.get_user_info(token_data["access_token"])
+        long_lived = oauth_instagram.exchange_long_lived_token(user_access_token)
+        user_access_token = long_lived.get("access_token", user_access_token)
+        expires_in = long_lived.get("expires_in", expires_in)
+    except Exception:
+        pass
+
+    try:
+        user_info = oauth_instagram.get_user_info(user_access_token)
     except Exception:
         return _frontend_settings_redirect(
             error="Falha ao obter conta Instagram Business/Creator",
@@ -329,14 +338,16 @@ def callback_instagram(
             frontend_origin=parsed.get("frontend_origin"),
         )
 
+    page_access_token = user_info.get("page_access_token") or user_access_token
+
     _upsert_social_account(
         db=db,
         user_id=parsed["user_id"],
         platform="INSTAGRAM",
         platform_user_id=user_info.get("id", ""),
-        access_token=token_data["access_token"],
+        access_token=page_access_token,
         refresh_token=token_data.get("refresh_token"),
-        expires_in=token_data.get("expires_in"),
+        expires_in=expires_in,
         scope=settings.instagram_scopes,
     )
 

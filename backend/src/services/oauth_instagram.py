@@ -1,4 +1,5 @@
-"""Meta / Instagram Graph OAuth 2.0 + caption publish (image placeholder)."""
+"""Meta / Instagram Graph OAuth 2.0 (Page token for content publishing)."""
+
 import urllib.parse
 
 import httpx
@@ -41,13 +42,29 @@ def exchange_code_for_token(code: str) -> dict:
         return resp.json()
 
 
+def exchange_long_lived_token(short_lived_token: str) -> dict:
+    """Exchange a short-lived user token for a long-lived token (~60 days)."""
+    with httpx.Client() as client:
+        resp = client.get(
+            _graph_url("oauth/access_token"),
+            params={
+                "grant_type": "fb_exchange_token",
+                "client_id": settings.instagram_app_id,
+                "client_secret": settings.instagram_app_secret,
+                "fb_exchange_token": short_lived_token,
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
 def get_user_info(access_token: str) -> dict:
-    """Resolve Instagram Business/Creator account id linked to the Facebook user."""
+    """Resolve IG Business/Creator account and Page access token for publishing."""
     with httpx.Client() as client:
         pages_resp = client.get(
             _graph_url("me/accounts"),
             params={
-                "fields": "instagram_business_account{id,username}",
+                "fields": "access_token,instagram_business_account{id,username}",
                 "access_token": access_token,
             },
         )
@@ -57,10 +74,12 @@ def get_user_info(access_token: str) -> dict:
         for page in pages:
             ig_account = page.get("instagram_business_account") or {}
             ig_id = ig_account.get("id")
-            if ig_id:
+            page_token = page.get("access_token")
+            if ig_id and page_token:
                 return {
                     "id": str(ig_id),
                     "username": ig_account.get("username"),
+                    "page_access_token": str(page_token),
                 }
 
         raise ValueError(
@@ -69,34 +88,7 @@ def get_user_info(access_token: str) -> dict:
 
 
 def publish_post(access_token: str, ig_user_id: str, caption: str) -> str:
-    """Publish an Instagram feed post (image URL + caption). Returns media id."""
-    image_url = (settings.instagram_publish_image_url or "").strip()
-    if not image_url:
-        raise ValueError(
-            "INSTAGRAM_PUBLISH_IMAGE_URL não configurada — necessária para publicar no Instagram."
-        )
+    """Publish a feed post (delegates to instagram_publish)."""
+    from src.services.instagram_publish import publish_feed_post
 
-    with httpx.Client() as client:
-        create_resp = client.post(
-            _graph_url(f"{ig_user_id}/media"),
-            params={
-                "image_url": image_url,
-                "caption": caption,
-                "access_token": access_token,
-            },
-        )
-        create_resp.raise_for_status()
-        creation_id = create_resp.json().get("id")
-        if not creation_id:
-            raise ValueError("Resposta do Instagram sem id de mídia.")
-
-        publish_resp = client.post(
-            _graph_url(f"{ig_user_id}/media_publish"),
-            params={
-                "creation_id": creation_id,
-                "access_token": access_token,
-            },
-        )
-        publish_resp.raise_for_status()
-        media_id = publish_resp.json().get("id", creation_id)
-        return str(media_id)
+    return publish_feed_post(access_token, ig_user_id, caption)
