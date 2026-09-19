@@ -1,11 +1,12 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, MessageSquare, Building2, FileText, CalendarDays, LayoutTemplate, LogOut, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Building2, FileText, CalendarDays, LayoutTemplate, LogOut, Sun, Moon, Target } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAppStore } from '../../store/useAppStore';
 import { useAuth } from '../../hooks/useAuth';
 
 const primaryNavItems = [
+    { to: '/objetivo', label: 'Objetivo', icon: Target, end: false },
     { to: '/campanhas', label: 'Campanhas', icon: LayoutDashboard, end: false },
     { to: '/posts', label: 'Posts', icon: FileText, end: false },
     { to: '/templates', label: 'Templates', icon: LayoutTemplate, end: false },

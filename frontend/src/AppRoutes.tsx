@@ -11,6 +11,7 @@ import { MainLayout } from './components/layout/MainLayout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const ObjectivePage = lazy(() => import('./pages/ObjectivePage').then((m) => ({ default: m.ObjectivePage })));
 const GenerationPage = lazy(() => import('./pages/GenerationPage').then((m) => ({ default: m.GenerationPage })));
 const ReviewPage = lazy(() => import('./pages/ReviewPage').then((m) => ({ default: m.ReviewPage })));
 const PostsPage = lazy(() => import('./pages/PostsPage').then((m) => ({ default: m.PostsPage })));
@@ -52,6 +53,8 @@ function ProtectedLayout() {
 /** Rotas com layout protegido (pathless — só wrapper). */
 const protectedRoutes = [
     { path: '/campanhas', element: <LazyPage><DashboardPage /></LazyPage> },
+    { path: '/objetivo', element: <LazyPage><ObjectivePage /></LazyPage> },
+    { path: '/nova-campanha', element: <Navigate to="/objetivo" replace /> },
     { path: '/cmo', element: <LazyPage><CmoPage /></LazyPage> },
     { path: '/empresa', element: <LazyPage><CompanyPage /></LazyPage> },
     { path: '/configuracoes', element: <Navigate to="/empresa" replace /> },
