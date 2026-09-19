@@ -12,5 +12,6 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)
     timezone = Column(String(64), nullable=False, default="America/Sao_Paulo")
+    audience = Column(String(32), nullable=False, default="mei_loja_liberal")
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)

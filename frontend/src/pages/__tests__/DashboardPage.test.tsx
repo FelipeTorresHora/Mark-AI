@@ -15,6 +15,47 @@ const mockApi = apiModule.api as unknown as {
     delete: ReturnType<typeof vi.fn>;
 };
 
+const defaultGoals = {
+    audience: 'mei_loja_liberal',
+    completed_count: 0,
+    total_count: 6,
+    goals: [
+        {
+            key: 'connect_account',
+            title: 'Conectar sua primeira conta',
+            description: 'Vincule X ou LinkedIn.',
+            featured: true,
+            completed: false,
+            completed_at: null,
+            current: 0,
+            target: 1,
+            progress_percent: 0,
+        },
+        {
+            key: 'approve_first_post',
+            title: 'Aprovar o primeiro post',
+            description: 'Revise um conteúdo.',
+            featured: true,
+            completed: false,
+            completed_at: null,
+            current: 0,
+            target: 1,
+            progress_percent: 0,
+        },
+        {
+            key: 'publish_3_in_7_days',
+            title: '3 posts na semana',
+            description: 'Publique três vezes.',
+            featured: true,
+            completed: false,
+            completed_at: null,
+            current: 0,
+            target: 3,
+            progress_percent: 0,
+        },
+    ],
+};
+
 function mockDashboardRequests({
     campaigns = { items: [], total: 0, skip: 0, limit: 10 },
     profile = {
@@ -24,9 +65,11 @@ function mockDashboardRequests({
         target_audience: 'Founders',
         unique_value: 'Automacao',
     },
+    goals = defaultGoals,
 }: {
     campaigns?: { items: unknown[]; total: number; skip: number; limit: number };
     profile?: Record<string, string>;
+    goals?: typeof defaultGoals;
 }) {
     mockApi.get.mockImplementation((url: string) => {
         if (url.startsWith('/api/v1/campaigns')) {
@@ -34,6 +77,9 @@ function mockDashboardRequests({
         }
         if (url === '/api/v1/brand-profile') {
             return Promise.resolve({ data: profile });
+        }
+        if (url === '/api/v1/goals') {
+            return Promise.resolve({ data: goals });
         }
         return Promise.reject(new Error(`Unexpected GET ${url}`));
     });
@@ -70,6 +116,15 @@ describe('DashboardPage', () => {
         render(<DashboardPage />, { wrapper: createWrapper() });
         await waitFor(() => {
             expect(screen.getByText('Nenhuma campanha ainda')).toBeTruthy();
+        });
+    });
+
+    it('shows goals widget on dashboard', async () => {
+        mockDashboardRequests({});
+        render(<DashboardPage />, { wrapper: createWrapper() });
+        await waitFor(() => {
+            expect(screen.getByText('Suas metas')).toBeTruthy();
+            expect(screen.getByText('Conectar sua primeira conta')).toBeTruthy();
         });
     });
 

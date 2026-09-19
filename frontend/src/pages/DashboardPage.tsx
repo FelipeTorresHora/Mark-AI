@@ -8,6 +8,7 @@ import { Pagination } from '../components/common/Pagination';
 import { api } from '../lib/api';
 import { toast } from '../lib/toast';
 import { Plus, FileText, CheckCircle, Clock, AlertCircle, Zap, Trash2 } from 'lucide-react';
+import { GoalsWidget } from '../components/dashboard/GoalsWidget';
 import { cn, isNotFoundError } from '../lib/utils';
 import type { PostsPerPlatform } from '../types';
 
@@ -38,18 +39,12 @@ function clampPostCount(value: number) {
 export function DashboardPage() {
     const navigate = useNavigate();
     const location = useLocation();
+    const navTopic = (location.state as { topic?: string } | null)?.topic ?? '';
     const [page, setPage] = useState(0);
-    const [topic, setTopic] = useState<string>(
-        (location.state as { topic?: string } | null)?.topic ?? '',
-    );
+    const [topic, setTopic] = useState<string>(navTopic);
     const [postsPerPlatform, setPostsPerPlatform] = useState<PostsPerPlatform>({ ...DEFAULT_POSTS_PER_PLATFORM });
-    const [isComposerOpen, setIsComposerOpen] = useState<boolean>(
-        !!(location.state as { topic?: string } | null)?.topic,
-    );
-    const navTopic = (location.state as { topic?: string } | null)?.topic;
-    const [consumedNavTopic, setConsumedNavTopic] = useState<string | undefined>(
-        () => (location.state as { topic?: string } | null)?.topic,
-    );
+    const [isComposerOpen, setIsComposerOpen] = useState<boolean>(!!navTopic);
+    const [consumedNavTopic, setConsumedNavTopic] = useState<string | undefined>(() => navTopic || undefined);
     const [deletingCampaignId, setDeletingCampaignId] = useState<string | null>(null);
     const CAMPAIGNS_PER_PAGE = 10;
 
@@ -142,6 +137,8 @@ export function DashboardPage() {
                     <Plus size={18} /> Nova Campanha
                 </Button>
             </div>
+
+            <GoalsWidget />
 
             {isComposerOpen && (
                 <Card className="p-6 mb-6">

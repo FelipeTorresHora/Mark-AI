@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from src.config import settings
 from src.database import SessionLocal
-from src.routers import generate, posts, campaigns, brand_profile, chat, x_posts, cron, dashboard
+from src.routers import generate, posts, campaigns, brand_profile, chat, x_posts, cron, dashboard, goals
 from src.routers import auth as auth_router
 from src.routers import social as social_router
 from src.routers import x_integration as x_integration_router
@@ -60,6 +60,7 @@ app.include_router(campaigns.router, prefix=API_PREFIX)
 app.include_router(brand_profile.router, prefix=API_PREFIX)
 app.include_router(chat.router, prefix=API_PREFIX)
 app.include_router(dashboard.router, prefix=API_PREFIX)
+app.include_router(goals.router, prefix=API_PREFIX)
 
 
 @app.get("/health")
