@@ -19,6 +19,8 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
 import { LandingPage } from './pages/LandingPage';
+import { RequireOnboardingComplete } from './components/auth/RequireOnboardingComplete';
+import { OnboardingPage } from './pages/OnboardingPage';
 
 /** Layout protegido: autenticação + sidebar. */
 function ProtectedLayout() {
@@ -56,8 +58,23 @@ export const router = createBrowserRouter([
 
     // Rotas protegidas (ProtectedLayout como wrapper pathless)
     {
-        element: <ProtectedLayout />,
-        children: protectedRoutes,
+        element: (
+            <ProtectedRoute>
+                <Outlet />
+            </ProtectedRoute>
+        ),
+        children: [
+            { path: '/onboarding', element: <OnboardingPage /> },
+            {
+                element: <RequireOnboardingComplete />,
+                children: [
+                    {
+                        element: <ProtectedLayout />,
+                        children: protectedRoutes,
+                    },
+                ],
+            },
+        ],
     },
 
     // Catch-all → redireciona para campanhas

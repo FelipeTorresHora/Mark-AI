@@ -44,7 +44,8 @@ export function DashboardPage() {
     );
     const [postsPerPlatform, setPostsPerPlatform] = useState<PostsPerPlatform>({ ...DEFAULT_POSTS_PER_PLATFORM });
     const [isComposerOpen, setIsComposerOpen] = useState<boolean>(
-        !!(location.state as { topic?: string } | null)?.topic,
+        !!(location.state as { topic?: string; openObjective?: boolean } | null)?.topic ||
+            !!(location.state as { openObjective?: boolean } | null)?.openObjective,
     );
     const [deletingCampaignId, setDeletingCampaignId] = useState<string | null>(null);
     const CAMPAIGNS_PER_PAGE = 10;
@@ -63,11 +64,16 @@ export function DashboardPage() {
     });
 
     useEffect(() => {
-        const nextState = location.state as { topic?: string } | null;
-        if (!nextState?.topic) return;
-        setTopic(nextState.topic);
-        setIsComposerOpen(true);
+        const nextState = location.state as { topic?: string; openObjective?: boolean } | null;
+        if (nextState?.topic) {
+            setTopic(nextState.topic);
+            setIsComposerOpen(true);
+        } else if (nextState?.openObjective) {
+            setIsComposerOpen(true);
+        }
     }, [location.state]);
+
+    const objectiveMode = !!(location.state as { openObjective?: boolean } | null)?.openObjective;
 
     const generateMutation = useMutation({
         mutationFn: async () => {
@@ -144,9 +150,13 @@ export function DashboardPage() {
                 <Card className="p-6 mb-6">
                     <div className="flex items-start justify-between gap-4 mb-5">
                         <div>
-                            <h2 className="text-2xl font-extrabold app-text">Nova Campanha</h2>
+                            <h2 className="text-2xl font-extrabold app-text">
+                                {objectiveMode ? 'Defina seu objetivo' : 'Nova Campanha'}
+                            </h2>
                             <p className="app-text-muted mt-1">
-                                Descreva a pauta e escolha quantas variações gerar por rede.
+                                {objectiveMode
+                                    ? 'Descreva o que quer alcançar agora — geramos posts para os canais conectados.'
+                                    : 'Descreva a pauta e escolha quantas variações gerar por rede.'}
                             </p>
                         </div>
                         <Button variant="outline" onClick={() => setIsComposerOpen(false)}>
@@ -189,7 +199,7 @@ export function DashboardPage() {
                     )}
 
                     <label htmlFor="campaign-topic" className="block text-sm font-semibold app-text-secondary mb-3">
-                        Descreva a pauta desta campanha
+                        {objectiveMode ? 'Qual é o seu objetivo agora?' : 'Descreva a pauta desta campanha'}
                     </label>
                     <textarea
                         id="campaign-topic"
@@ -197,7 +207,11 @@ export function DashboardPage() {
                         onChange={(e) => setTopic(e.target.value)}
                         rows={5}
                         className="app-input resize-none text-sm"
-                        placeholder="Ex: Lançamento do nosso novo produto de automação para pequenas empresas. Foco nos benefícios de economia de tempo e redução de erros operacionais..."
+                        placeholder={
+                            objectiveMode
+                                ? 'Ex.: Abrir 10 novas vagas na agenda da clínica este mês com posts que mostrem resultados reais dos pacientes...'
+                                : 'Ex: Lançamento do nosso novo produto de automação para pequenas empresas. Foco nos benefícios de economia de tempo e redução de erros operacionais...'
+                        }
                         disabled={generateMutation.isPending}
                     />
 

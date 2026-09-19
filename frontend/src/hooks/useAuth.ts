@@ -4,6 +4,7 @@ import axios from 'axios';
 import { api } from '../lib/api';
 import { useAppStore } from '../store/useAppStore';
 import { showSuccess } from '../lib/toast';
+import { isOnboardingComplete } from '../lib/onboarding';
 
 export function useAuth() {
     const { user, accessToken, isAuthLoading, setAuth, clearAuth } = useAppStore();
@@ -32,15 +33,22 @@ export function useAuth() {
     }, [setAuth, clearAuth]);
 
     const login = useCallback(
-        async (email: string, password: string) => {
+        async (email: string, password: string, options?: { redirectTo?: string }) => {
             const res = await api.post('/api/v1/auth/login', { email, password });
             const token: string = res.data.access_token;
             const meRes = await api.get('/api/v1/auth/me', {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            setAuth({ id: meRes.data.id, email: meRes.data.email }, token);
+            const user = { id: meRes.data.id, email: meRes.data.email };
+            setAuth(user, token);
             showSuccess('Login realizado com sucesso!');
-            navigate('/campanhas');
+
+            if (options?.redirectTo) {
+                navigate(options.redirectTo);
+                return;
+            }
+
+            navigate(isOnboardingComplete(user.id) ? '/campanhas' : '/onboarding');
         },
         [setAuth, navigate],
     );
@@ -48,8 +56,7 @@ export function useAuth() {
     const register = useCallback(
         async (email: string, password: string) => {
             await api.post('/api/v1/auth/register', { email, password });
-            // Auto-login after registration
-            await login(email, password);
+            await login(email, password, { redirectTo: '/onboarding' });
         },
         [login],
     );
