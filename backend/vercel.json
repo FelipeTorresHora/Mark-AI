@@ -1,22 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/index.py": {
-      "maxDuration": 300
+    "src/main.py": {
+      "maxDuration": 300,
+      "excludeFiles": "{tests/**,__tests__/**,**/*.test.py,**/test_*.py,alembic/**}"
     }
   },
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "api/index.py"
-    }
-  ],
   "crons": [
     {
       "path": "/api/v1/cron/x-publish-due",
