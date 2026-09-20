@@ -5,11 +5,5 @@
       "maxDuration": 300,
       "excludeFiles": "{tests/**,__tests__/**,**/*.test.py,**/test_*.py,alembic/**}"
     }
-  },
-  "crons": [
-    {
-      "path": "/api/v1/cron/x-publish-due",
-      "schedule": "*/5 * * * *"
-    }
-  ]
+  }
 }
