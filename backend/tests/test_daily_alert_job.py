@@ -1,4 +1,5 @@
-from datetime import UTC, datetime, timedelta
+import datetime as dt
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytz
@@ -37,16 +38,26 @@ def test_process_user_sends_when_posts_scheduled_today(
 ):
     user = user_factory()
     tz = pytz.timezone(user.timezone or "America/Sao_Paulo")
-    now_local = datetime.now(tz)
-    monkeypatch.setattr(
-        "src.workers.jobs.daily_alert.settings.morning_alert_hour",
-        now_local.hour,
-    )
+    # Fixed local morning + afternoon schedule — avoids flakes when now+2h crosses midnight
+    # in the user TZ (job only includes posts scheduled on today's local calendar date).
+    fixed_now = tz.localize(datetime(2026, 6, 15, 9, 30, 0))
+    scheduled_local = tz.localize(datetime(2026, 6, 15, 14, 0, 0))
+    scheduled = scheduled_local.astimezone(pytz.UTC).replace(tzinfo=None)
+
+    monkeypatch.setattr("src.workers.jobs.daily_alert.settings.morning_alert_hour", 9)
+
+    class MockDatetime:
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_now
+
+        def __new__(cls, *args, **kwargs):
+            return dt.datetime(*args, **kwargs)
+
+    monkeypatch.setattr("src.workers.jobs.daily_alert.datetime", MockDatetime)
 
     campaign = campaign_factory(user)
-    scheduled = now_local.astimezone(pytz.UTC).replace(tzinfo=None) + timedelta(hours=2)
-    post_factory(campaign, platform="X", status="APPROVED", content="Post do dia")
-    post = db_session.query(Post).filter(Post.campaign_id == campaign.id).first()
+    post = post_factory(campaign, platform="X", status="APPROVED", content="Post do dia")
     post.scheduled_at = scheduled
     db_session.commit()
 
