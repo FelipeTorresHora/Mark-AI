@@ -1,21 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/index.py": {
+    "src/main.py": {
       "maxDuration": 300,
       "excludeFiles": "{tests/**,__tests__/**,**/*.test.py,**/test_*.py,alembic/**}"
     }
-  },
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/api/index"
-    }
-  ],
-  "crons": [
-    {
-      "path": "/api/v1/cron/x-publish-due",
-      "schedule": "*/5 * * * *"
-    }
-  ]
+  }
 }
